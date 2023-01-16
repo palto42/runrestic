@@ -11,7 +11,7 @@ RUN apt-get update && export DEBIAN_FRONTEND=noninteractive \
 RUN add-apt-repository ppa:deadsnakes/ppa \
     && apt-get update \
     && export DEBIAN_FRONTEND=noninteractive \
-    && apt-get -y install --no-install-recommends python3.7-venv python3.8-venv python3.9-venv python3.10-venv pipx
+    && apt-get -y install --no-install-recommends python3.7-venv python3.8-venv python3.9-venv python3.10-venv python3.11-venv pipx
 
 # Setup default python tools in a venv via pipx to avoid conflicts
 ENV PIPX_HOME=/usr/local/py-utils \
