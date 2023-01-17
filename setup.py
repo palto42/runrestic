@@ -41,7 +41,7 @@ setup(
     ],
     package_data={"runrestic.runrestic": ["*.json"]},
     install_requires=[
-        "jsonschema>=3.0,<4.0",
+        "jsonschema>=4.0",
         "requests>=2.27.1,<3.0.0",
         "toml>=0.10,<0.11",
     ],

@@ -33,7 +33,6 @@
 		"ms-python.black-formatter",
 		"ms-python.isort",
 		"donjayamanne.githistory",
-		"eamodio.gitlens",
 		"davidanson.vscode-markdownlint",
 		"njpwerner.autodocstring",
 		"streetsidesoftware.code-spell-checker"
