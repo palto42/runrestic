@@ -1,96 +1,174 @@
+import io
 import logging
 import os
 import time
+from unittest.mock import MagicMock, patch, call
+import pytest
 
 from runrestic.restic.tools import (
     MultiCommand,
+    Popen,
     initialize_environment,
     redact_password,
     retry_process,
 )
 
 
-def test_retry_process(tmpdir):
-    p = retry_process(
-        ["python", "tests/retry_testing_tool.py", "1", "a", tmpdir], {"retry_count": 0}
-    )
-    p.pop("time")
-    assert p.pop("output") == [(0, "")]
-    assert p == {"current_try": 1, "tries_total": 1}
+def fake_process(returncode: int, stdout_text: str) -> MagicMock:
+    """Helper to create a fake Popen-like process object."""
+    proc = MagicMock()
+    proc.__enter__.return_value = proc
+    proc.__exit__.return_value = None
+    proc.stdout = io.StringIO(stdout_text)
+    proc.returncode = returncode
+    return proc
 
-    p = retry_process(
-        ["python", "tests/retry_testing_tool.py", "1", "b", tmpdir], {"retry_count": 1}
-    )
-    p.pop("time")
-    assert p.pop("output") == [(0, "")]
-    assert p == {"current_try": 1, "tries_total": 2}
 
-    p = retry_process(
-        ["python", "tests/retry_testing_tool.py", "2", "c", tmpdir], {"retry_count": 1}
-    )
-    p.pop("time")
-    p.pop("output")
-    assert p == {"current_try": 2, "tries_total": 2}
+@pytest.mark.parametrize(
+    "popen_results, retry_count, expected_output, expected_current, expected_total",
+    [
+        (  # Test immediate success with no no reties allowed
+            [fake_process(0, "pass"), fake_process(0, "extra")],
+            0,
+            [(0, "pass")],
+            1,
+            1,
+        ),
+        (  # Test immediate success with 1 retry allowed
+            [fake_process(0, "pass"), fake_process(0, "extra")],
+            1,
+            [(0, "pass")],
+            1,
+            2,
+        ),
+        (  # Test 1 failure with 1 retry allowed, finally passing
+            [
+                fake_process(1, "fail1"),
+                fake_process(0, "pass"),
+                fake_process(0, "extra"),
+            ],
+            1,
+            [(1, "fail1"), (0, "pass")],
+            2,
+            2,
+        ),
+        (  # Test 2 failures with 1 retry allowed, finally failing
+            [
+                fake_process(1, "fail1"),
+                fake_process(1, "fail2"),
+                fake_process(0, "extra"),
+            ],
+            1,
+            [(1, "fail1"), (1, "fail2")],
+            2,
+            2,
+        ),
+        (  # Test 4 failures and 5th success with 4 retries allowed, finally passing
+            [
+                fake_process(1, "fail1"),
+                fake_process(1, "fail2"),
+                fake_process(1, "fail3"),
+                fake_process(1, "fail4"),
+                fake_process(0, "pass"),
+                fake_process(0, "extra"),
+            ],
+            4,
+            [
+                (1, "fail1"),
+                (1, "fail2"),
+                (1, "fail3"),
+                (1, "fail4"),
+                (0, "pass"),
+            ],
+            5,
+            5,
+        ),
+        (  # Test 3 failures with 2 retries allowed, finally failing
+            [
+                fake_process(1, "fail1"),
+                fake_process(1, "fail2"),
+                fake_process(1, "fail3"),
+                fake_process(0, "extra"),
+            ],
+            2,
+            [(1, "fail1"), (1, "fail2"), (1, "fail3")],
+            3,
+            3,
+        ),
+    ],
+)
+@patch("runrestic.restic.tools.Popen")
+def test_retry_process(
+    mock_popen: MagicMock,
+    popen_results,
+    retry_count,
+    expected_output,
+    expected_current,
+    expected_total,
+):
+    # Arrange
+    mock_popen.side_effect = popen_results
 
-    p = retry_process(
-        ["python", "tests/retry_testing_tool.py", "3", "d", tmpdir], {"retry_count": 1}
-    )
-    p.pop("time")
-    p.pop("output")
-    assert p == {"current_try": 2, "tries_total": 2}
+    # Act
+    result = retry_process(["dummy_command"], {"retry_count": retry_count})
 
-    p = retry_process(
-        ["python", "tests/retry_testing_tool.py", "5", "f", tmpdir], {"retry_count": 4}
-    )
-    p.pop("time")
-    p.pop("output")
-    assert p == {"current_try": 5, "tries_total": 5}
+    # Assert
+    assert "time" in result, "Result should include execution time"
+    assert result["output"] == expected_output
+    assert result["current_try"] == expected_current
+    assert result["tries_total"] == expected_total
 
+@pytest.mark.parametrize(
+    "backoff, expected_sleep_args",
+    [
+        ("0:01", [1, 1, 1]),
+        ("0:01 linear", [1, 2, 3]),
+        ("0:01 exponential", [1, 2, 4]),
+    ],
+)
+@patch("runrestic.restic.tools.time.sleep")
+@patch("runrestic.restic.tools.Popen")
+def test_retry_process_backoff(
+    mock_popen: MagicMock,
+    mock_sleep: MagicMock,
+    backoff,
+    expected_sleep_args,
+):
+    # Arrange
+    mock_popen.side_effect = [
+        fake_process(1, f"call {i + 1}/3") for i in range(3)
+    ]
+
+    # Act
     p = retry_process(
-        ["python", "tests/retry_testing_tool.py", "4", "h", tmpdir], {"retry_count": 2}
+        ["dummy_command"],
+        {"retry_count": 2, "retry_backoff": backoff},
     )
+
+    # Assert sleeps
+    expected_calls = [call(arg) for arg in expected_sleep_args]
+    mock_sleep.assert_has_calls(expected_calls)
+
+    # Remove timing and output details for comparison
     p.pop("time")
     p.pop("output")
     assert p == {"current_try": 3, "tries_total": 3}
 
 
-def test_retry_process_with_backoff(tmpdir):
+@patch("runrestic.restic.tools.Popen")
+def test_retry_process_with_abort_reason(mock_popen: MagicMock):
+    # Call the retry_process function with mocked Popen
+    mock_popen.return_value = fake_process(99, "Abort reason: 1/10")
     p = retry_process(
-        ["python", "tests/retry_testing_tool.py", "3", "i", tmpdir],
-        {"retry_count": 2, "retry_backoff": "0:01"},
-    )
-    assert 3 > p.pop("time") > 2
-    p.pop("output")
-    assert p == {"current_try": 3, "tries_total": 3}
-
-    p = retry_process(
-        ["python", "tests/retry_testing_tool.py", "3", "j", tmpdir],
-        {"retry_count": 2, "retry_backoff": "0:01 linear"},
-    )
-    assert 4 > p.pop("time") > 3
-    p.pop("output")
-    assert p == {"current_try": 3, "tries_total": 3}
-
-    p = retry_process(
-        ["python", "tests/retry_testing_tool.py", "3", "k", tmpdir],
-        {"retry_count": 2, "retry_backoff": "0:01 exponential"},
-    )
-    assert 4 > p.pop("time") > 3
-    p.pop("output")
-    assert p == {"current_try": 3, "tries_total": 3}
-
-
-def test_retry_process_with_abort_reason(tmpdir):
-    p = retry_process(
-        ["python", "tests/retry_testing_tool.py", "10", "aaa", tmpdir],
+        ["dummy_command"],
         {"retry_count": 99},
         abort_reasons=[": 1/10"],
     )
-    p.pop("time")
-    assert p.pop("output")[-1][0] == 1
-    assert p == {"current_try": 1, "tries_total": 100}
+    # Validate the results
+    assert p["current_try"] == 1
+    assert p["tries_total"] == 100
 
-
+# ToDo: How to mock Popen side_effects for multiprocessing? 
 def test_run_multiple_commands_parallel(tmpdir):
     cmds = [
         ["python", "tests/retry_testing_tool.py", "3", "l", tmpdir],
