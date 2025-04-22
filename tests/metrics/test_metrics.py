@@ -36,7 +36,7 @@ def test_write_metrics(tmpdir):
             },
         },
         "prune": {
-            "/tmp/restic-repo1": {
+            "/tmp/restic-repo1": {  # noqa: S108
                 "containing_packs_before": "576",
                 "containing_blobs": "95060",
                 "containing_size_bytes": 2764885196.8,
@@ -52,7 +52,7 @@ def test_write_metrics(tmpdir):
                 "duration_seconds": 4.2081992626190186,
                 "rc": 0,
             },
-            "/tmp/restic-repo2": {
+            "/tmp/restic-repo2": {  # noqa: S108
                 "containing_packs_before": "575",
                 "containing_blobs": "95052",
                 "containing_size_bytes": 2765958938.624,
@@ -70,7 +70,7 @@ def test_write_metrics(tmpdir):
             },
         },
         "check": {
-            "/tmp/restic-repo1": {
+            "/tmp/restic-repo1": {  # noqa: S108
                 "errors": 0,
                 "errors_data": 0,
                 "errors_snapshots": 0,
@@ -79,7 +79,7 @@ def test_write_metrics(tmpdir):
                 "duration_seconds": 28.380418062210083,
                 "rc": 0,
             },
-            "/tmp/restic-repo2": {
+            "/tmp/restic-repo2": {  # noqa: S108
                 "errors": 0,
                 "errors_data": 0,
                 "errors_snapshots": 0,
@@ -90,13 +90,13 @@ def test_write_metrics(tmpdir):
             },
         },
         "stats": {
-            "/tmp/restic-repo1": {
+            "/tmp/restic-repo1": {  # noqa: S108
                 "total_file_count": 885276,
                 "total_size_bytes": 18148185424,
                 "duration_seconds": 20.471401691436768,
                 "rc": 0,
             },
-            "/tmp/restic-repo2": {
+            "/tmp/restic-repo2": {  # noqa: S108
                 "total_file_count": 885276,
                 "total_size_bytes": 18148185424,
                 "duration_seconds": 20.466784715652466,

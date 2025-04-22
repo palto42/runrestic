@@ -117,7 +117,7 @@ def test_configuration_file_paths_wrong_perms(caplog, restic_dir):
 def test_parse_configuration_good_conf(restic_minimal_good_conf):
     assert parse_configuration(restic_minimal_good_conf) == {
         "name": "example.toml",
-        "repositories": ["/tmp/restic-repo-1"],
+        "repositories": ["/tmp/restic-repo-1"],  # noqa: S108
         "environment": {"RESTIC_PASSWORD": "CHANGEME"},
         "execution": {
             "exit_on_error": True,

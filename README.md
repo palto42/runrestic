@@ -138,6 +138,11 @@ sudo chmod +x /etc/cron.d/runrestic
 
 ## Changelog
 
+- v0.5.30
+  - Change project setup based on [fpgmaas/cookiecutter-uv](https://github.com/fpgmaas/cookiecutter-uv)
+    - Uses `uv` as a replacement for `pip` and `ruff` instead of `black`.
+    - `tox` to easily test multiple python versions
+  - Drop support for Python 3.9 since it will be EOL end 2025.
 - v0.5.29
   - Support Python 3.12
   - Updated devcontainer to Ubuntu 24.04 (noble)
@@ -179,29 +184,82 @@ curl -sSL https://raw.githubusercontent.com/python-poetry/poetry/master/get-poet
 pip install --user poetry
 ```
 
-### Installing dependencies
+---
+
+# runrestic - NEW
+
+[![Release](https://img.shields.io/github/v/release/sinnwerkstatt/runrestic)](https://img.shields.io/github/v/release/sinnwerkstatt/runrestic)
+[![Build status](https://img.shields.io/github/actions/workflow/status/sinnwerkstatt/runrestic/main.yml?branch=main)](https://github.com/sinnwerkstatt/runrestic/actions/workflows/main.yml?query=branch%3Amain)
+[![codecov](https://codecov.io/gh/sinnwerkstatt/runrestic/branch/main/graph/badge.svg)](https://codecov.io/gh/sinnwerkstatt/runrestic)
+[![Commit activity](https://img.shields.io/github/commit-activity/m/sinnwerkstatt/runrestic)](https://img.shields.io/github/commit-activity/m/sinnwerkstatt/runrestic)
+[![License](https://img.shields.io/github/license/sinnwerkstatt/runrestic)](https://img.shields.io/github/license/sinnwerkstatt/runrestic)
+
+A wrapper script for Restic backup software that inits, creates, prunes and checks backups.
+
+- **Github repository**: <https://github.com/sinnwerkstatt/runrestic/>
+- **Documentation** <https://sinnwerkstatt.github.io/runrestic/>
+
+
+
+
+## Getting started with your project
+
+### 1. Create a New Repository
+
+First, create a repository on GitHub with the same name as this project, and then run the following commands:
 
 ```bash
-poetry install
+git init -b main
+git add .
+git commit -m "init commit"
+git remote add origin git@github.com:sinnwerkstatt/runrestic.git
+git push -u origin main
 ```
 
-### Running Tests
+### 2. Set Up Your Development Environment
+
+Then, install the environment and the pre-commit hooks with
 
 ```bash
-poetry run pytest
+make install
 ```
 
-### Using VScode devcontainer
+This will also generate your `uv.lock` file
 
-The project contains a `.devcontainer` folder with the settings for VScode to [develop inside container](https://code.visualstudio.com/docs/remote/containers). The Python virtual environment
-created by poetry is stored outside the container in the projects path `.virtualenvs` so that it survives container rebuilds.
+### 3. Run the pre-commit hooks
 
-The Ubuntu 24.04 based container uses Python 3.12 as system version and includes minimal Python 3.8 to 3.11 versions
-for creating virtual environments in any of those versions.
+Initially, the CI/CD pipeline might be failing due to formatting issues. To resolve those run:
 
-It is possible to switch the Python version used by `poetry` with the command `poetry env use <version>`,
-see [poetry managing environments](https://python-poetry.org/docs/managing-environments/) for more details.
+```bash
+uv run pre-commit run -a
+```
 
-# Thanks
+### 4. Commit the changes
 
-This project was initially based on [borgmatic](https://github.com/witten/borgmatic/) but has since evolved into something else.
+Lastly, commit the changes made by the two steps above to your repository.
+
+```bash
+git add .
+git commit -m 'Fix formatting issues'
+git push origin main
+```
+
+You are now ready to start development on your project!
+The CI/CD pipeline will be triggered when you open a pull request, merge to main, or when you create a new release.
+
+To finalize the set-up for publishing to PyPI, see [here](https://fpgmaas.github.io/cookiecutter-uv/features/publishing/#set-up-for-pypi).
+For activating the automatic documentation with MkDocs, see [here](https://fpgmaas.github.io/cookiecutter-uv/features/mkdocs/#enabling-the-documentation-on-github).
+To enable the code coverage reports, see [here](https://fpgmaas.github.io/cookiecutter-uv/features/codecov/).
+
+## Releasing a new version
+
+- Create an API Token on [PyPI](https://pypi.org/).
+- Add the API Token to your projects secrets with the name `PYPI_TOKEN` by visiting [this page](https://github.com/sinnwerkstatt/runrestic/settings/secrets/actions/new).
+- Create a [new release](https://github.com/sinnwerkstatt/runrestic/releases/new) on Github.
+- Create a new tag in the form `*.*.*`.
+
+For more details, see [here](https://fpgmaas.github.io/cookiecutter-uv/features/cicd/#how-to-trigger-a-release).
+
+---
+
+Repository initiated with [fpgmaas/cookiecutter-uv](https://github.com/fpgmaas/cookiecutter-uv).

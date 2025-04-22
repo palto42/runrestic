@@ -160,7 +160,7 @@ _restic_help_check = """
 # TYPE restic_check_errors_data gauge
 # HELP restic_check_errors_snapshots Boolean to tell if any of the snapshots can not be loaded
 # TYPE restic_check_errors_snapshots gauge
-# HELP restic_check_read_data Boolean that indicates whether or not `--read-data` was pass to restic 
+# HELP restic_check_read_data Boolean that indicates whether or not `--read-data` was pass to restic
 # TYPE restic_check_read_data gauge
 # HELP restic_check_check_unused Boolean that indicates whether or not `--check-unused` was pass to restic
 # TYPE restic_check_check_unused gauge
@@ -251,9 +251,7 @@ def prune_metrics(metrics: Dict[str, Any], name: str) -> str:
     retval = _restic_help_prune
     for repo, mtrx in metrics.items():
         if mtrx["rc"] != 0:
-            retval += (
-                f'restic_prune_rc{{config="{name}",repository="{repo}"}} {mtrx["rc"]}\n'
-            )
+            retval += f'restic_prune_rc{{config="{name}",repository="{repo}"}} {mtrx["rc"]}\n'
         else:
             try:
                 retval += _restic_prune.format(name=name, repository=repo, **mtrx)
@@ -266,9 +264,7 @@ def check_metrics(metrics: Dict[str, Any], name: str) -> str:
     retval = _restic_help_check
     for repo, mtrx in metrics.items():
         if mtrx["rc"] != 0:
-            retval += (
-                f'restic_check_rc{{config="{name}",repository="{repo}"}} {mtrx["rc"]}\n'
-            )
+            retval += f'restic_check_rc{{config="{name}",repository="{repo}"}} {mtrx["rc"]}\n'
         else:
             retval += _restic_check.format(name=name, repository=repo, **mtrx)
     return retval
@@ -278,9 +274,7 @@ def stats_metrics(metrics: Dict[str, Any], name: str) -> str:
     retval = _restic_help_stats
     for repo, mtrx in metrics.items():
         if mtrx["rc"] != 0:
-            retval += (
-                f'restic_stats_rc{{config="{name}",repository="{repo}"}} {mtrx["rc"]}\n'
-            )
+            retval += f'restic_stats_rc{{config="{name}",repository="{repo}"}} {mtrx["rc"]}\n'
         else:
             retval += _restic_stats.format(name=name, repository=repo, **mtrx)
     return retval

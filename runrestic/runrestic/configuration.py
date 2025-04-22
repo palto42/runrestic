@@ -1,4 +1,5 @@
 """Parse CLI arguments an read configuration files"""
+
 import json
 import logging
 import os
@@ -66,9 +67,7 @@ def cli_arguments(args: Union[List[str], None] = None) -> Tuple[Namespace, List[
         metavar="INTERVAL",
         help="Updated interval in seconds for restic progress (default: None)",
     )
-    parser.add_argument(
-        "-v", "--version", action="version", version="%(prog)s " + __version__
-    )
+    parser.add_argument("-v", "--version", action="version", version="%(prog)s " + __version__)
 
     options, extras = parser.parse_known_args(args)
     if extras:
@@ -87,9 +86,7 @@ def cli_arguments(args: Union[List[str], None] = None) -> Tuple[Namespace, List[
 
 
 def possible_config_paths() -> Sequence[str]:
-    user_config_directory = os.getenv("XDG_CONFIG_HOME") or os.path.expandvars(
-        os.path.join("$HOME", ".config")
-    )
+    user_config_directory = os.getenv("XDG_CONFIG_HOME") or os.path.expandvars(os.path.join("$HOME", ".config"))
     return [
         "/etc/runrestic.toml",
         "/etc/runrestic.json",
@@ -115,9 +112,7 @@ def configuration_file_paths() -> Sequence[str]:
 
         for filename in os.listdir(path):
             filename = os.path.join(path, filename)
-            if (
-                filename.endswith(".toml") or filename.endswith(".json")
-            ) and not os.path.isdir(filename):
+            if (filename.endswith(".toml") or filename.endswith(".json")) and not os.path.isdir(filename):
                 octal_permissions = oct(os.stat(filename).st_mode)
                 if octal_permissions[-2:] != "00":  # file permissions are too broad
                     logger.warning(
@@ -138,11 +133,7 @@ def configuration_file_paths() -> Sequence[str]:
 def parse_configuration(config_filename: str) -> Dict[str, Any]:
     logger.debug("Parsing configuration file: %s", config_filename)
     with open(config_filename, encoding="utf-8") as file:
-        config: Dict[str, Any] = (
-            toml.load(file)
-            if str(config_filename).endswith(".toml")
-            else json.load(file)
-        )
+        config: Dict[str, Any] = toml.load(file) if str(config_filename).endswith(".toml") else json.load(file)
     config = deep_update(CONFIG_DEFAULTS, dict(config))
 
     if "name" not in config:

@@ -23,16 +23,12 @@ class MultiCommand:
         self.commands = commands
         self.config = config
         self.abort_reasons = abort_reasons
-        self.process_pool_executor = ProcessPoolExecutor(
-            max_workers=len(commands) if config["parallel"] else 1
-        )
+        self.process_pool_executor = ProcessPoolExecutor(max_workers=len(commands) if config["parallel"] else 1)
 
     def run(self) -> List[Dict[str, Any]]:
         for command in self.commands:
             logger.debug("Spawning %s", command)
-            process = self.process_pool_executor.submit(
-                retry_process, command, self.config, self.abort_reasons
-            )
+            process = self.process_pool_executor.submit(retry_process, command, self.config, self.abort_reasons)
             self.processes += [process]
 
         # result() is blocking. The function will return when all processes are done
@@ -64,9 +60,7 @@ def log_messages(process: Any, proc_cmd: str) -> str:
                 proc_log_level = logging.ERROR
             elif re.match(r"^warning", log_out, re.I):
                 proc_log_level = logging.WARNING
-            elif re.match(
-                r"^unchanged\s+/", log_out, re.I
-            ):  # unchanged files in restic output
+            elif re.match(r"^unchanged\s+/", log_out, re.I):  # unchanged files in restic output
                 proc_log_level = logging.DEBUG
             else:
                 proc_log_level = logging.INFO
@@ -84,33 +78,22 @@ def retry_process(
     shell = config.get("shell", False)
     tries_total = config.get("retry_count", 0) + 1
     status = {"current_try": 0, "tries_total": tries_total, "output": []}
-    if isinstance(cmd, list):
-        proc_cmd = cmd[0]
-    else:
-        proc_cmd = os.path.basename(cmd.split(" ", maxsplit=1)[0])
+    proc_cmd = cmd[0] if isinstance(cmd, list) else os.path.basename(cmd.split(" ", maxsplit=1)[0])
     for i in range(0, tries_total):
         status["current_try"] = i + 1
 
-        with Popen(
-            cmd, stdout=PIPE, stderr=STDOUT, shell=shell, encoding="UTF-8"
-        ) as process:
+        with Popen(cmd, stdout=PIPE, stderr=STDOUT, shell=shell, encoding="UTF-8") as process:  # noqa: S603
             output = log_messages(process, proc_cmd)
         returncode = process.returncode
         status["output"] += [(returncode, output)]
         if returncode == 0:
             break
 
-        if abort_reasons and any(
-            [abort_reason in output for abort_reason in abort_reasons]
-        ):
+        if abort_reasons and any(abort_reason in output for abort_reason in abort_reasons):
             logger.error(
                 "Aborting '%s' because of %s",
                 proc_cmd,
-                [
-                    abort_reason
-                    for abort_reason in abort_reasons
-                    if abort_reason in output
-                ],
+                [abort_reason for abort_reason in abort_reasons if abort_reason in output],
             )
             break
         if config.get("retry_backoff"):
@@ -153,16 +136,12 @@ def initialize_environment(config: Dict[str, Any]) -> None:
             value = "**********"
         logger.debug("[Environment] %s=%s", key, value)
 
-    if os.geteuid() == 0:  # pragma: no cover; if user is root, we just use system cache
-        os.environ["XDG_CACHE_HOME"] = "/var/cache"
-    elif not (os.environ.get("HOME") or os.environ.get("XDG_CACHE_HOME")):
+    if os.geteuid() == 0 or not (
+        os.environ.get("HOME") or os.environ.get("XDG_CACHE_HOME")
+    ):  # pragma: no cover; if user is root, we just use system cache
         os.environ["XDG_CACHE_HOME"] = "/var/cache"
 
 
 def redact_password(repo_str: str, pw_replacement: str) -> str:
     re_repo = re.compile(r"(^(?:[s]?ftp:|rest:http[s]?:|s3:http[s]?:).*?):(\S+)(@.*$)")
-    return (
-        re_repo.sub(rf"\1:{pw_replacement}\3", repo_str)
-        if pw_replacement
-        else re_repo.sub(r"\1\3", repo_str)
-    )
+    return re_repo.sub(rf"\1:{pw_replacement}\3", repo_str) if pw_replacement else re_repo.sub(r"\1\3", repo_str)

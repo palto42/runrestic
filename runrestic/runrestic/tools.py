@@ -22,7 +22,7 @@ def parse_size(size: str) -> float:
     try:
         number, unit = re_bytes.findall(size)[0]
     except IndexError:
-        logger.error("Failed to parse size of '%s'", size)
+        logger.error("Failed to parse size of '%s'", size)  # noqa: TRY400
         return 0.0
     units = {
         "B": 1,
@@ -41,11 +41,9 @@ def parse_size(size: str) -> float:
 def parse_time(time_str: str) -> int:
     re_time = re.compile(r"(?:([0-9]+):)?([0-9]+):([0-9]+)")
     try:
-        hours, minutes, seconds = (
-            int(x) if x else 0 for x in re_time.findall(time_str)[0]
-        )
+        hours, minutes, seconds = (int(x) if x else 0 for x in re_time.findall(time_str)[0])
     except IndexError:
-        logger.error("Failed to parse time of '%s'", time_str)
+        logger.error("Failed to parse time of '%s'", time_str)  # noqa: TRY400
         return 0
     if minutes:
         seconds += minutes * 60
@@ -70,7 +68,7 @@ def deep_update(base: Dict[Any, Any], update: Dict[Any, Any]) -> Dict[Any, Any]:
 def parse_line(  # type: ignore[no-untyped-def]
     regex: str,
     output: str,
-    default: Union[str, tuple],  # type: ignore[type-arg]
+    default: Union[str, tuple],
 ):
     r"""Parse line with provided regex and return matched variables.
     If there is no match in the output, the variables will be unchanged
@@ -101,6 +99,6 @@ def parse_line(  # type: ignore[no-untyped-def]
     try:
         parsed = re.findall(regex, output)[0]
     except IndexError:
-        logger.error("No match in output for regex '%s'", regex)
+        logger.error("No match in output for regex '%s'", regex)  # noqa: TRY400
         return default
     return parsed
