@@ -4,6 +4,8 @@ import os
 import time
 from unittest.mock import MagicMock, patch, call
 import pytest
+from time import sleep
+from typing import Any, Dict, List, Optional, Union
 
 from runrestic.restic.tools import (
     MultiCommand,
@@ -12,6 +14,30 @@ from runrestic.restic.tools import (
     redact_password,
     retry_process,
 )
+
+
+def fake_retry_process(
+    cmd: Union[str, List[str]],
+    config: Dict[str, Any],
+    abort_reasons: Optional[List[str]] = None,
+) -> Dict[str, Any]:
+    """Fake retry_process function to simulate command execution."""
+    # Simulate different outputs per command
+    if isinstance(cmd, list):
+        cmd = cmd[0]
+    try:
+        count = int(cmd[-1])
+    except ValueError:
+        count = 1
+    retry_count = config.get("retry_count", 0)
+    sleep(count / 100)  # Simulate some processing time
+    return {
+        "current_try": count,
+        "tries_total": 3,
+        "output": [(1, f"fail{i}") for i in range(1, count)]
+        + ([(0, "pass")] if retry_count + 1 >= count else []),
+        "time": count / 100,
+    }
 
 
 def fake_process(returncode: int, stdout_text: str) -> MagicMock:
@@ -118,6 +144,7 @@ def test_retry_process(
     assert result["current_try"] == expected_current
     assert result["tries_total"] == expected_total
 
+
 @pytest.mark.parametrize(
     "backoff, expected_sleep_args",
     [
@@ -135,9 +162,7 @@ def test_retry_process_backoff(
     expected_sleep_args,
 ):
     # Arrange
-    mock_popen.side_effect = [
-        fake_process(1, f"call {i + 1}/3") for i in range(3)
-    ]
+    mock_popen.side_effect = [fake_process(1, f"call {i + 1}/3") for i in range(3)]
 
     # Act
     p = retry_process(
@@ -168,33 +193,27 @@ def test_retry_process_with_abort_reason(mock_popen: MagicMock):
     assert p["current_try"] == 1
     assert p["tries_total"] == 100
 
-# ToDo: How to mock Popen side_effects for multiprocessing? 
-def test_run_multiple_commands_parallel(tmpdir):
-    cmds = [
-        ["python", "tests/retry_testing_tool.py", "3", "l", tmpdir],
-        ["python", "tests/retry_testing_tool.py", "2", "m", tmpdir],
-        ["python", "tests/retry_testing_tool.py", "1", "n", tmpdir],
-    ]
+
+@patch("runrestic.restic.tools.retry_process", new=fake_retry_process)
+def test_run_multiple_commands_parallel():
+    cmds = ["dummy_cmd3", "dummy_cmd2", "dummy_cmd1"]
     config = {"retry_count": 2, "parallel": True, "retry_backoff": "0:01"}
     start_time = time.time()
     aa = MultiCommand(cmds, config).run()
-    assert 3 > time.time() - start_time > 2
+    assert 0.05 > time.time() - start_time > 0.03
     expected_return = [[1, 1, 0], [1, 0], [0]]
 
     for exp, cmd_ret in zip(expected_return, aa):
         assert [x[0] for x in cmd_ret["output"]] == exp
 
 
+@patch("runrestic.restic.tools.retry_process", new=fake_retry_process)
 def test_run_multiple_commands_serial(tmpdir):
-    cmds = [
-        ["python", "tests/retry_testing_tool.py", "3", "o", tmpdir],
-        ["python", "tests/retry_testing_tool.py", "3", "p", tmpdir],
-        ["python", "tests/retry_testing_tool.py", "4", "q", tmpdir],
-    ]
+    cmds = ["dummy_cmd3", "dummy_cmd3", "dummy_cmd4"]
     config = {"retry_count": 2, "parallel": False, "retry_backoff": "0:01"}
     start_time = time.time()
     aa = MultiCommand(cmds, config).run()
-    assert 9 > float(time.time() - start_time) > 6
+    assert 0.15 > float(time.time() - start_time) > 0.05
     expected_return = [[1, 1, 0], [1, 1, 0], [1, 1, 1]]
 
     for exp, cmd_ret in zip(expected_return, aa):
