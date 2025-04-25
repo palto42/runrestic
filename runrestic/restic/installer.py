@@ -9,7 +9,7 @@ the installation process, including permissions and alternative paths.
 import bz2
 import json
 import logging
-import os
+from pathlib import Path
 from shutil import which
 
 import requests
@@ -47,28 +47,47 @@ def download_restic() -> None:
         PermissionError: If the program cannot write to the default installation path
         and no alternative path is provided.
     """
-    github_json = json.loads(requests.get("https://api.github.com/repos/restic/restic/releases/latest").content)  # noqa: S113
+    try:
+        response = requests.get("https://api.github.com/repos/restic/restic/releases/latest", timeout=10)
+        response.raise_for_status()
+        github_json = json.loads(response.content)
+    except requests.exceptions.Timeout:
+        print("Error: Unable to fetch the latest Restic release due to a timeout.")
+        return
+    except requests.exceptions.RequestException as e:
+        print(f"Error: Unable to fetch the latest Restic release. {e}")
+        return
 
     download_url = ""
-    for asset in github_json["assets"]:
+    for asset in github_json.get("assets", []):
         if "linux_amd64.bz2" in asset["name"]:
             download_url = asset["browser_download_url"]
             break
 
-    file = requests.get(download_url, allow_redirects=True).content  # noqa: S113
+    if not download_url:
+        print("Error: Could not find a suitable Restic binary to download.")
+        return
+
+    try:
+        file = requests.get(download_url, allow_redirects=True, timeout=60).content
+    except requests.exceptions.Timeout:
+        print("Error: Unable to download the Restic binary due to a timeout.")
+        return
+    except requests.exceptions.RequestException as e:
+        print(f"Error: Unable to download the Restic binary. {e}")
+        return
 
     program = bz2.decompress(file)
     try:
-        path = "/usr/local/bin/restic"
-        with open(path, "wb") as prog:
-            prog.write(program)
-        os.chmod(path, 0o755)  # noqa: S103
+        path = Path("/usr/local/bin/restic")
+        path.write_bytes(program)
+        path.chmod(0o755)
     except PermissionError as e:
         print(e)
         print("\nTry re-running this as root.")
         print("Alternatively you can specify a path where I can put restic.")
         alt_path = input("Example: /home/you/.bin/restic. Leave blank to exit.\n")
         if alt_path:
-            with open(alt_path, "wb") as prog:
-                prog.write(program)
-            os.chmod(alt_path, 0o755)  # noqa: S103
+            path = Path(alt_path)
+            path.write_bytes(program)
+            path.chmod(0o755)
