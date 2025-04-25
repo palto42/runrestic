@@ -118,6 +118,8 @@ ignore = [
     # Deprecated import
     "UP035",
     "UP006",
+    # Logging exception
+    "TRY400",
 ]
 
 [tool.ruff.lint.per-file-ignores]

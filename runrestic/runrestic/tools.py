@@ -48,7 +48,7 @@ def parse_size(size: str) -> float:
     try:
         number, unit = re_bytes.findall(size)[0]
     except IndexError:
-        logger.error("Failed to parse size of '%s'", size)  # noqa: TRY400
+        logger.error("Failed to parse size of '%s'", size)
         return 0.0
     units = {
         "B": 1,
@@ -78,7 +78,7 @@ def parse_time(time_str: str) -> int:
     try:
         hours, minutes, seconds = (int(x) if x else 0 for x in re_time.findall(time_str)[0])
     except IndexError:
-        logger.error("Failed to parse time of '%s'", time_str)  # noqa: TRY400
+        logger.error("Failed to parse time of '%s'", time_str)
         return 0
     if minutes:
         seconds += minutes * 60
@@ -139,6 +139,6 @@ def parse_line(
     try:
         parsed = re.findall(regex, output)[0]
     except IndexError:
-        logger.error("No match in output for regex '%s'", regex)  # noqa: TRY400
+        logger.error("No match in output for regex '%s'", regex)
         return default
     return parsed  # type: ignore[no-any-return]

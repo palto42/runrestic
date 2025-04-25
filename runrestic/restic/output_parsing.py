@@ -232,7 +232,7 @@ def parse_stats(process_infos: dict[str, Any]) -> dict[str, Any]:
             "rc": return_code,
         }
     except KeyError as err:
-        logger.error("Key %s not found in output: %s", err, output)  # noqa: TRY400
+        logger.error("Key %s not found in output: %s", err, output)
         return {
             "total_file_count": 0,
             "total_size_bytes": 0,
