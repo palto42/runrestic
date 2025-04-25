@@ -1,3 +1,5 @@
+from unittest.mock import patch
+
 from runrestic.metrics import write_metrics
 
 
@@ -113,3 +115,16 @@ def test_write_metrics(tmpdir):
         "metrics": {"prometheus": {"path": tmpdir.join("example.prom")}},
     }
     write_metrics(metrics, cfg)
+
+
+def test_no_write_metrics(tmpdir):
+    metrics = {"dummy": 42}
+    cfg = {
+        "name": "test",
+        "metrics": {"something": {"path": tmpdir.join("example.prom")}},
+    }
+    # Ensure that the open function is not called
+    # when the configuration does not contain "prometheus"
+    with patch("builtins.open", create=True) as mock_open:
+        write_metrics(metrics, cfg)
+        mock_open.assert_not_called()
