@@ -8,7 +8,7 @@ to process and format data.
 
 import logging
 import re
-from typing import Any, Union
+from typing import Any, TypeVar
 
 logger = logging.getLogger(__name__)
 
@@ -110,11 +110,14 @@ def deep_update(base: dict[Any, Any], update: dict[Any, Any]) -> dict[Any, Any]:
     return new
 
 
+ParsedType = TypeVar("ParsedType", str, tuple)
+
+
 def parse_line(
     regex: str,
     output: str,
-    default: Union[str, tuple],
-) -> Union[str, tuple]:
+    default: ParsedType,
+) -> ParsedType:
     r"""
     Parse a line of text using a regular expression and return matched variables.
 
@@ -123,10 +126,10 @@ def parse_line(
     Args:
         regex (str): The regular expression to match the requested variables.
         output (str): The text output to be parsed.
-        default (Union[str, tuple]): Default values to return if parsing fails.
+        default (T): Default values to return if parsing fails.
 
     Returns:
-        Union[str, tuple]: The parsed result or the default values.
+        ParsedType: The parsed result or the default values.
 
     Examples:
         >>> parse_line(
@@ -141,4 +144,10 @@ def parse_line(
     except IndexError:
         logger.error("No match in output for regex '%s'", regex)
         return default
-    return parsed  # type: ignore[no-any-return]
+    if isinstance(parsed, type(default)):
+        return parsed
+    else:
+        logger.error(
+            f"The format of the parsed output '{parsed}' does not match the expected format as per default '{default}'.",
+        )
+    return default
