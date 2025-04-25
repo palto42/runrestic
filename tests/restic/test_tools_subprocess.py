@@ -5,8 +5,15 @@ Using pytest-subprocess plugin https://pytest-subprocess.readthedocs.io/
 
 import logging
 import subprocess
+from io import StringIO
 
 from runrestic.restic import tools
+
+
+def test_log_messages_no_output():
+    """Test log messages with no output"""
+    assert tools.log_messages(None, "test_cmd") == ""
+    assert tools.log_messages(StringIO("    "), "test_cmd") == ""
 
 
 def test_restic_logs(caplog, fp, monkeypatch):  # pylint: disable=invalid-name

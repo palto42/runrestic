@@ -126,20 +126,18 @@ def configuration_file_paths() -> list[str]:
     paths: list[str] = []
     for path in possible_config_paths():
         path = os.path.realpath(path)
+        # Check access permission, includes check for path existence
         if not os.access(path, os.R_OK):
             logger.debug("No access to path %s skipping", path)
             continue
 
-        if not os.path.exists(path):
-            continue
-
-        if not os.path.isdir(path):  # pragma: no cover
+        if os.path.isfile(path):
             paths += [path]
             continue
 
         for filename in os.listdir(path):
             filename = os.path.join(path, filename)
-            if (filename.endswith(".toml") or filename.endswith(".json")) and not os.path.isdir(filename):
+            if (filename.endswith(".toml") or filename.endswith(".json")) and os.path.isfile(filename):
                 octal_permissions = oct(os.stat(filename).st_mode)
                 if octal_permissions[-2:] != "00":  # file permissions are too broad
                     logger.warning(
