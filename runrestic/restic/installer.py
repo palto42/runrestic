@@ -55,7 +55,7 @@ def download_restic() -> None:
         print("Error: Unable to fetch the latest Restic release due to a timeout.")
         return
     except requests.exceptions.RequestException as e:
-        print(f"Error: Unable to fetch the latest Restic release. {e}")
+        print(f"Error: Unable to fetch the latest Restic release: {e}")
         return
 
     download_url = ""
@@ -74,13 +74,14 @@ def download_restic() -> None:
         print("Error: Unable to download the Restic binary due to a timeout.")
         return
     except requests.exceptions.RequestException as e:
-        print(f"Error: Unable to download the Restic binary. {e}")
+        print(f"Error: Unable to download the Restic binary: {e}")
         return
 
     program = bz2.decompress(file)
     try:
         path = Path("/usr/local/bin/restic")
         path.write_bytes(program)
+
         path.chmod(0o755)
     except PermissionError as e:
         print(e)
