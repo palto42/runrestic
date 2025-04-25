@@ -1,3 +1,12 @@
+"""
+This module provides utility functions and classes to support Restic operations.
+
+It includes:
+- `MultiCommand` for executing multiple commands in parallel or sequentially.
+- Functions for logging process output, retrying commands, initializing environment variables,
+  and redacting sensitive information from logs.
+"""
+
 import logging
 import os
 import re
@@ -5,7 +14,7 @@ import time
 from concurrent.futures import Future
 from concurrent.futures.process import ProcessPoolExecutor
 from subprocess import PIPE, STDOUT, Popen
-from typing import Any, Dict, List, Optional, Sequence, Union
+from typing import Any, Sequence
 
 from runrestic.runrestic.tools import parse_time
 
@@ -13,43 +22,64 @@ logger = logging.getLogger(__name__)
 
 
 class MultiCommand:
+    """
+    A class to execute multiple commands in parallel or sequentially, with support for retries and abort conditions.
+
+    Attributes:
+        commands (Sequence[list[str] | str]): List of commands to execute.
+        config (dict): Configuration dictionary for command execution.
+        abort_reasons (list[str] | None): List of reasons to abort execution if found in the output.
+    """
+
     def __init__(
         self,
-        commands: Sequence[Union[List[str], str]],
-        config: Dict[str, Any],
-        abort_reasons: Optional[List[str]] = None,
-    ):
-        self.processes: List[Future[Dict[str, Any]]] = []
+        commands: Sequence[list[str] | str],
+        config: dict[str, Any],
+        abort_reasons: list[str] | None = None,
+    ) -> None:
+        """
+        Initialize the MultiCommand instance.
+
+        Args:
+            commands (Sequence[list[str] | str]): List of commands to execute.
+            config (dict): Configuration dictionary for command execution.
+            abort_reasons (list[str] | None): List of reasons to abort execution if found in the output.
+        """
+        self.processes: list[Future[dict[str, Any]]] = []
         self.commands = commands
         self.config = config
         self.abort_reasons = abort_reasons
         self.process_pool_executor = ProcessPoolExecutor(max_workers=len(commands) if config["parallel"] else 1)
 
-    def run(self) -> List[Dict[str, Any]]:
+    def run(self) -> list[dict[str, Any]]:
+        """
+        Execute all commands and collect their results.
+
+        Returns:
+            list[dict[str, Any]]: List of results for each command.
+        """
         for command in self.commands:
             logger.debug("Spawning %s", command)
             process = self.process_pool_executor.submit(retry_process, command, self.config, self.abort_reasons)
-            self.processes += [process]
+            self.processes.append(process)
 
         # result() is blocking. The function will return when all processes are done
         return [process.result() for process in self.processes]
 
 
-def log_messages(process: Any, proc_cmd: str) -> str:
-    """Capture the process output and generate appropriate log messages
-
-    Parameters
-    ----------
-    process : Popen[str]  # this typing only works for Python >= 3.9
-        Subprocess instance
-    proc_cmd : str
-        Name of the executed command (as it should appear in the logs)
-
-    Returns
-    -------
-    str
-        Complete process output
+def log_messages(process: Popen, proc_cmd: str) -> str:
     """
+    Capture the process output and generate appropriate log messages.
+
+    Args:
+        process (Popen): Subprocess instance.
+        proc_cmd (str): Name of the executed command (as it should appear in the logs).
+
+    Returns:
+        str: Complete process output.
+    """
+    if process.stdout is None:
+        return ""
     output = ""
     for log_out in process.stdout:
         if log_out.strip():
@@ -69,23 +99,34 @@ def log_messages(process: Any, proc_cmd: str) -> str:
 
 
 def retry_process(
-    cmd: Union[str, List[str]],
-    config: Dict[str, Any],
-    abort_reasons: Optional[List[str]] = None,
-) -> Dict[str, Any]:
+    cmd: str | list[str],
+    config: dict[str, Any],
+    abort_reasons: list[str] | None = None,
+) -> dict[str, Any]:
+    """
+    Execute a command with retries and optional abort conditions.
+
+    Args:
+        cmd (str | list[str]): Command to execute.
+        config (dict[str, Any]): Configuration dictionary for command execution.
+        abort_reasons (list[str] | None): List of reasons to abort execution if found in the output.
+
+    Returns:
+        dict[str, Any]: Status and output of the command execution.
+    """
     start_time = time.time()
 
     shell = config.get("shell", False)
     tries_total = config.get("retry_count", 0) + 1
     status = {"current_try": 0, "tries_total": tries_total, "output": []}
     proc_cmd = cmd[0] if isinstance(cmd, list) else os.path.basename(cmd.split(" ", maxsplit=1)[0])
-    for i in range(0, tries_total):
+    for i in range(tries_total):
         status["current_try"] = i + 1
 
         with Popen(cmd, stdout=PIPE, stderr=STDOUT, shell=shell, encoding="UTF-8") as process:  # noqa: S603
             output = log_messages(process, proc_cmd)
         returncode = process.returncode
-        status["output"] += [(returncode, output)]
+        status["output"].append((returncode, output))
         if returncode == 0:
             break
 
@@ -129,7 +170,13 @@ def retry_process(
     return status
 
 
-def initialize_environment(config: Dict[str, Any]) -> None:
+def initialize_environment(config: dict[str, Any]) -> None:
+    """
+    Set environment variables based on the provided configuration.
+
+    Args:
+        config (dict[str, Any]): Dictionary of environment variables to set.
+    """
     for key, value in config.items():
         os.environ[key] = value
         if key == "RESTIC_PASSWORD":
@@ -143,5 +190,15 @@ def initialize_environment(config: Dict[str, Any]) -> None:
 
 
 def redact_password(repo_str: str, pw_replacement: str) -> str:
+    """
+    Redact sensitive information (e.g., passwords) from a repository string.
+
+    Args:
+        repo_str (str): Repository string containing sensitive information.
+        pw_replacement (str): Replacement string for sensitive information.
+
+    Returns:
+        str: Repository string with sensitive information redacted.
+    """
     re_repo = re.compile(r"(^(?:[s]?ftp:|rest:http[s]?:|s3:http[s]?:).*?):(\S+)(@.*$)")
     return re_repo.sub(rf"\1:{pw_replacement}\3", repo_str) if pw_replacement else re_repo.sub(r"\1\3", repo_str)

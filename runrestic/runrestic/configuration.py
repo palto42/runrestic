@@ -1,11 +1,17 @@
-"""Parse CLI arguments an read configuration files"""
+"""
+This module provides functionality for parsing CLI arguments and reading configuration files.
+
+It includes utilities to handle command-line arguments, locate configuration files, and parse
+them into structured data. The module also validates configuration files against a predefined
+JSON schema to ensure correctness.
+"""
 
 import json
 import logging
 import os
 from argparse import ArgumentParser, Namespace
 from importlib.resources import open_text
-from typing import Any, Dict, List, Sequence, Tuple, Union
+from typing import Any
 
 import jsonschema
 import toml
@@ -15,7 +21,7 @@ from runrestic.runrestic.tools import deep_update
 
 logger = logging.getLogger(__name__)
 
-CONFIG_DEFAULTS = {
+CONFIG_DEFAULTS: dict[str, Any] = {
     "execution": {
         "parallel": False,
         "exit_on_error": True,
@@ -23,10 +29,19 @@ CONFIG_DEFAULTS = {
     }
 }
 with open_text("runrestic.runrestic", "schema.json", encoding="utf-8") as schema_file:
-    SCHEMA = json.load(schema_file)
+    SCHEMA: dict[str, Any] = json.load(schema_file)
 
 
-def cli_arguments(args: Union[List[str], None] = None) -> Tuple[Namespace, List[str]]:
+def cli_arguments(args: list[str] | None = None) -> tuple[Namespace, list[str]]:
+    """
+    Parse command-line arguments for the `runrestic` application.
+
+    Args:
+        args (list[str] | None): A list of arguments to parse. If None, uses `sys.argv`.
+
+    Returns:
+        tuple[Namespace, list[str]]: A tuple containing parsed options and extra arguments.
+    """
     parser = ArgumentParser(
         prog="runrestic",
         description="""
@@ -75,7 +90,7 @@ def cli_arguments(args: Union[List[str], None] = None) -> Tuple[Namespace, List[
     else:
         valid_actions = ["shell", "init", "backup", "prune", "check", "stats", "unlock"]
         extras = []
-        new_actions: List[str] = []
+        new_actions: list[str] = []
         for act in options.actions:
             if act in valid_actions:
                 new_actions += [act]
@@ -85,7 +100,13 @@ def cli_arguments(args: Union[List[str], None] = None) -> Tuple[Namespace, List[
     return options, extras
 
 
-def possible_config_paths() -> Sequence[str]:
+def possible_config_paths() -> list[str]:
+    """
+    Generate a list of possible configuration file paths.
+
+    Returns:
+        list[str]: A list of paths where configuration files might be located.
+    """
     user_config_directory = os.getenv("XDG_CONFIG_HOME") or os.path.expandvars(os.path.join("$HOME", ".config"))
     return [
         "/etc/runrestic.toml",
@@ -95,8 +116,14 @@ def possible_config_paths() -> Sequence[str]:
     ]
 
 
-def configuration_file_paths() -> Sequence[str]:
-    paths: List[str] = []
+def configuration_file_paths() -> list[str]:
+    """
+    Locate readable configuration files from possible paths.
+
+    Returns:
+        list[str]: A list of valid configuration file paths.
+    """
+    paths: list[str] = []
     for path in possible_config_paths():
         path = os.path.realpath(path)
         if not os.access(path, os.R_OK):
@@ -130,10 +157,19 @@ def configuration_file_paths() -> Sequence[str]:
     return paths
 
 
-def parse_configuration(config_filename: str) -> Dict[str, Any]:
+def parse_configuration(config_filename: str) -> dict[str, Any]:
+    """
+    Parse a configuration file and validate it against the schema.
+
+    Args:
+        config_filename (str): The path to the configuration file.
+
+    Returns:
+        dict[str, Any]: The parsed and validated configuration as a dictionary.
+    """
     logger.debug("Parsing configuration file: %s", config_filename)
     with open(config_filename, encoding="utf-8") as file:
-        config: Dict[str, Any] = toml.load(file) if str(config_filename).endswith(".toml") else json.load(file)
+        config: dict[str, Any] = toml.load(file) if str(config_filename).endswith(".toml") else json.load(file)
     config = deep_update(CONFIG_DEFAULTS, dict(config))
 
     if "name" not in config:
