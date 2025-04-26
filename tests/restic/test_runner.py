@@ -319,6 +319,103 @@ class TestResticRunner(TestCase):
         self.assertEqual(runner_instance.metrics["errors"], 0)
 
     @patch("runrestic.restic.runner.MultiCommand")
+    @patch("runrestic.restic.runner.parse_forget")
+    @patch("runrestic.restic.runner.redact_password", side_effect=lambda repo, repl: repo)
+    def test_forget_failure_increments_errors(
+        self,
+        mock_redact,
+        mock_parse_forget,
+        mock_mc,
+    ):
+        """
+        Test that forget() handles a non-zero return code by recording rc and incrementing errors,
+        and does not call parse_forget on failure.
+        """
+        config = {
+            "repositories": ["repo"],
+            "environment": {},
+            "execution": {},
+            "prune": {"keep-last": 2},
+        }
+        args = Namespace(dry_run=True)  # dry_run should add "--dry-run"
+        restic_args: list[str] = []
+        runner_instance = runner.ResticRunner(config, args, restic_args)
+
+        # Simulate failure return code
+        failure_run = {"output": [(1, "error")], "time": 0.1}
+        mock_mc.return_value.run.return_value = [failure_run]
+
+        runner_instance.forget()
+
+        # Should not parse on error
+        mock_parse_forget.assert_not_called()
+
+        # Metrics for repo should record rc only
+        forget_metrics = runner_instance.metrics["forget"]
+        self.assertEqual(forget_metrics["repo"], {"rc": 1})
+        # Error counter should be incremented
+        self.assertEqual(runner_instance.metrics["errors"], 1)
+
+        # Ensure "--dry-run" was included in the command
+        expected_cmds = [["restic", "-r", "repo", "forget", "--dry-run", "--keep-last", "2"]]
+        mock_mc.assert_called_once_with(
+            expected_cmds,
+            config=config["execution"],
+            abort_reasons=[
+                "Fatal: unable to open config file",
+                "Fatal: wrong password",
+            ],
+        )
+
+    @patch("runrestic.restic.runner.MultiCommand")
+    @patch("runrestic.restic.runner.parse_forget")
+    @patch("runrestic.restic.runner.redact_password", side_effect=lambda repo, repl: repo)
+    def test_forget_with_group_by_and_success(
+        self,
+        mock_redact,
+        mock_parse_forget,
+        mock_mc,
+    ):
+        """
+        Test that forget() includes '--group-by' when configured and calls parse_forget on success.
+        """
+        config = {
+            "repositories": ["repo"],
+            "environment": {},
+            "execution": {},
+            "prune": {"group-by": "tag"},
+        }
+        args = Namespace(dry_run=False)
+        restic_args: list[str] = []
+        runner_instance = runner.ResticRunner(config, args, restic_args)
+
+        # Simulate successful run
+        success_run = {"output": [(0, "ok")], "time": 0.2}
+        mock_mc.return_value.run.return_value = [success_run]
+        mock_parse_forget.return_value = {"forgotten": True}
+
+        runner_instance.forget()
+
+        # Should parse on success
+        mock_parse_forget.assert_called_once_with(success_run)
+
+        # Metrics should include parsed value
+        forget_metrics = runner_instance.metrics["forget"]
+        self.assertEqual(forget_metrics["repo"], {"forgotten": True})
+        self.assertEqual(runner_instance.metrics["errors"], 0)
+
+        # Ensure "--group-by tag" appears in the command
+        expected_cmds = [["restic", "-r", "repo", "forget", "--group-by", "tag"]]
+        mock_mc.assert_called_once_with(
+            expected_cmds,
+            config=config["execution"],
+            abort_reasons=[
+                "Fatal: unable to open config file",
+                "Fatal: wrong password",
+            ],
+        )
+
+    @patch("runrestic.restic.runner.MultiCommand")
     @patch("runrestic.restic.runner.parse_new_prune", side_effect=IndexError)
     @patch("runrestic.restic.runner.parse_prune")
     @patch("runrestic.restic.runner.redact_password", side_effect=lambda repo, repl: repo)
@@ -366,6 +463,46 @@ class TestResticRunner(TestCase):
         self.assertEqual(metrics["repo"], {"new_pruned": True})
 
     @patch("runrestic.restic.runner.MultiCommand")
+    @patch("runrestic.restic.runner.parse_new_prune")
+    @patch("runrestic.restic.runner.parse_prune")
+    @patch("runrestic.restic.runner.redact_password", side_effect=lambda repo, repl: repo)
+    def test_prune_failure_increments_errors(
+        self,
+        mock_redact,
+        mock_parse_prune,
+        mock_parse_new_prune,
+        mock_mc,
+    ):
+        """
+        Test prune() handles a non-zero return code by recording rc and incrementing errors.
+        """
+        # Setup
+        config = {
+            "repositories": ["repo"],
+            "environment": {},
+            "execution": {},
+        }
+        args = Namespace(dry_run=False)
+        restic_args: list[str] = []
+        runner_instance = runner.ResticRunner(config, args, restic_args)
+
+        # Simulate prune failure
+        failure_run = {"output": [(1, "prune error")], "time": 0.1}
+        mock_mc.return_value.run.return_value = [failure_run]
+
+        # Execute
+        runner_instance.prune()
+
+        # Should not attempt to parse on error
+        mock_parse_new_prune.assert_not_called()
+        mock_parse_prune.assert_not_called()
+
+        # Metrics should record the rc and errors should increment
+        prune_metrics = runner_instance.metrics["prune"]
+        self.assertEqual(prune_metrics["repo"], {"rc": 1})
+        self.assertEqual(runner_instance.metrics["errors"], 1)
+
+    @patch("runrestic.restic.runner.MultiCommand")
     @patch("runrestic.restic.runner.redact_password", side_effect=lambda repo, repl: repo)
     @patch("runrestic.restic.runner.parse_stats")
     def test_stats_metrics(self, mock_parse_stats, mock_redact, mock_mc):
@@ -388,6 +525,37 @@ class TestResticRunner(TestCase):
         metrics = runner_instance.metrics["stats"]
         self.assertEqual(metrics["repo"], {"stats": True})
         self.assertEqual(runner_instance.metrics["errors"], 0)
+
+    @patch("runrestic.restic.runner.MultiCommand")
+    @patch("runrestic.restic.runner.redact_password", side_effect=lambda repo, repl: repo)
+    @patch("runrestic.restic.runner.parse_stats")
+    def test_stats_failure_increments_errors(self, mock_parse_stats, mock_redact, mock_mc):
+        """
+        Test stats() handles return_code > 0 by recording rc and incrementing errors.
+        """
+        config = {
+            "repositories": ["repo"],
+            "environment": {},
+            "execution": {},
+        }
+        args = Namespace(dry_run=False)
+        restic_args = ["--verbose"]
+        runner_instance = runner.ResticRunner(config, args, restic_args)
+
+        # simulate failure
+        process_info = {"output": [(1, "error occurred")], "time": 0.1}
+        mock_mc.return_value.run.return_value = [process_info]
+
+        runner_instance.stats()
+
+        # parse_stats should NOT be called on failure
+        mock_parse_stats.assert_not_called()
+
+        metrics = runner_instance.metrics["stats"]
+        # rc should be recorded
+        self.assertEqual(metrics["repo"], {"rc": 1})
+        # errors counter should have been incremented by 1
+        self.assertEqual(runner_instance.metrics["errors"], 1)
 
     @patch("runrestic.restic.runner.MultiCommand")
     def test_check_metrics(self, mock_mc):
