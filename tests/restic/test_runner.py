@@ -1,4 +1,5 @@
 from argparse import Namespace
+from typing import Any
 from unittest import TestCase
 from unittest.mock import patch
 
@@ -35,7 +36,7 @@ class TestResticRunner(TestCase):
     @patch.object(runner.ResticRunner, "stats")
     @patch.object(runner.ResticRunner, "unlock")
     @patch("runrestic.restic.runner.write_metrics")
-    def test_run_invokes_all_actions(
+    def test_run_dispatcher(
         self,
         mock_write_metrics,
         mock_unlock,
@@ -44,182 +45,147 @@ class TestResticRunner(TestCase):
         mock_prune,
         mock_forget,
         mock_backup,
-        mock_init_method,
+        mock_init,
     ):
         """
-        Test that run() invokes all action methods in the correct conditions and logs metrics.
+        Dispatch scenarios for run():
+          - all actions explicitly named
+          - unknown action only
+          - default actions with metrics enabled
+          - default actions with metrics disabled
         """
-        config = {
-            "name": "test",
-            "repositories": ["repo"],
-            "environment": {},
-            "metrics": {"prometheus": {}},
-            "execution": {},
-            "backup": {},
-            "prune": {},
-        }
-        args = Namespace(actions=["init", "backup", "prune", "check", "stats", "unlock"])
-        args.dry_run = False
-        restic_args: list[str] = []
+        scenarios: list[dict[str, Any]] = [
+            {
+                "name": "all_actions",
+                "config": {
+                    "name": "test",
+                    "repositories": ["repo"],
+                    "environment": {},
+                    "execution": {},
+                    "metrics": {"prometheus": {}},
+                },
+                "actions": ["init", "backup", "prune", "check", "stats", "unlock"],
+                "initial_errors": 2,
+                "expected_calls": {
+                    "init": 1,
+                    "backup": 1,
+                    "forget": 1,
+                    "prune": 1,
+                    "check": 1,
+                    "stats": 1,
+                    "unlock": 1,
+                },
+                "write_metrics": True,
+                "expected_errors": 2,
+            },
+            {
+                "name": "unknown_only",
+                "config": {
+                    "name": "test",
+                    "repositories": ["repo"],
+                    "environment": {},
+                    "execution": {},
+                    # no "metrics" key → log_metrics=False
+                },
+                "actions": ["unknown"],
+                "initial_errors": 5,
+                "expected_calls": {
+                    "init": 0,
+                    "backup": 0,
+                    "forget": 0,
+                    "prune": 0,
+                    "check": 0,
+                    "stats": 0,
+                    "unlock": 0,
+                },
+                "write_metrics": False,
+                "expected_errors": 5,
+            },
+            {
+                "name": "default_with_stats",
+                "config": {
+                    "name": "test",
+                    "repositories": ["repo"],
+                    "environment": {},
+                    "execution": {},
+                    "metrics": {"prometheus": {}},
+                },
+                "actions": [],  # log_metrics=True → ["backup","prune","check","stats"]
+                "initial_errors": 0,
+                "expected_calls": {
+                    "init": 0,
+                    "backup": 1,
+                    "forget": 1,
+                    "prune": 1,
+                    "check": 1,
+                    "stats": 1,
+                    "unlock": 0,
+                },
+                "write_metrics": True,
+                "expected_errors": 0,
+            },
+            {
+                "name": "default_no_stats",
+                "config": {
+                    "name": "test",
+                    "repositories": ["repo"],
+                    "environment": {},
+                    "execution": {},
+                    # no "metrics" → log_metrics=False → ["backup","prune","check"]
+                },
+                "actions": [],
+                "initial_errors": 0,
+                "expected_calls": {
+                    "init": 0,
+                    "backup": 1,
+                    "forget": 1,
+                    "prune": 1,
+                    "check": 1,
+                    "stats": 0,
+                    "unlock": 0,
+                },
+                "write_metrics": False,
+                "expected_errors": 0,
+            },
+        ]
 
-        runner_instance = runner.ResticRunner(config, args, restic_args)
-        runner_instance.metrics["errors"] = 2
+        for sc in scenarios:
+            with self.subTest(sc["name"]):
+                args = Namespace(actions=sc["actions"])
+                args.dry_run = False
+                runner_instance = runner.ResticRunner(sc["config"], args, restic_args=[])
+                runner_instance.metrics["errors"] = sc["initial_errors"]
 
-        errors = runner_instance.run()
-        mock_init_method.assert_called_once()
-        mock_backup.assert_called_once()
-        mock_forget.assert_called_once()
-        mock_prune.assert_called_once()
-        mock_check.assert_called_once()
-        mock_stats.assert_called_once()
-        mock_unlock.assert_called_once()
-        mock_write_metrics.assert_called_once_with(runner_instance.metrics, config)
-        self.assertEqual(errors, 2)
+                result = runner_instance.run()
+                self.assertEqual(result, sc["expected_errors"])
 
-    @patch.object(runner.ResticRunner, "init")
-    @patch.object(runner.ResticRunner, "backup")
-    @patch.object(runner.ResticRunner, "forget")
-    @patch.object(runner.ResticRunner, "prune")
-    @patch.object(runner.ResticRunner, "check")
-    @patch.object(runner.ResticRunner, "stats")
-    @patch.object(runner.ResticRunner, "unlock")
-    @patch("runrestic.restic.runner.write_metrics")
-    def test_run_invokes_unknown_action(
-        self,
-        mock_write_metrics,
-        mock_unlock,
-        mock_stats,
-        mock_check,
-        mock_prune,
-        mock_forget,
-        mock_backup,
-        mock_init_method,
-    ):
-        """
-        Test that run() invokes all action methods in the correct conditions and logs metrics.
-        """
-        config = {
-            "name": "test",
-            "repositories": ["repo"],
-            "environment": {},
-            "execution": {},
-            "backup": {},
-            "prune": {},
-        }
-        args = Namespace(actions=["unknown"])
-        args.dry_run = False
-        restic_args: list[str] = []
+                # verify each method was (or wasn't) called
+                self.assertEqual(mock_init.call_count, sc["expected_calls"]["init"])
+                self.assertEqual(mock_backup.call_count, sc["expected_calls"]["backup"])
+                self.assertEqual(mock_forget.call_count, sc["expected_calls"]["forget"])
+                self.assertEqual(mock_prune.call_count, sc["expected_calls"]["prune"])
+                self.assertEqual(mock_check.call_count, sc["expected_calls"]["check"])
+                self.assertEqual(mock_stats.call_count, sc["expected_calls"]["stats"])
+                self.assertEqual(mock_unlock.call_count, sc["expected_calls"]["unlock"])
 
-        runner_instance = runner.ResticRunner(config, args, restic_args)
-        runner_instance.metrics["errors"] = 5
+                # verify write_metrics
+                if sc["write_metrics"]:
+                    mock_write_metrics.assert_called_once_with(runner_instance.metrics, sc["config"])
+                else:
+                    mock_write_metrics.assert_not_called()
 
-        errors = runner_instance.run()
-        mock_init_method.assert_not_called()
-        mock_backup.assert_not_called()
-        mock_forget.assert_not_called()
-        mock_prune.assert_not_called()
-        mock_check.assert_not_called()
-        mock_stats.assert_not_called()
-        mock_unlock.assert_not_called()
-        mock_write_metrics.assert_not_called()
-        self.assertEqual(errors, 5)
-
-    @patch.object(runner.ResticRunner, "init")
-    @patch.object(runner.ResticRunner, "backup")
-    @patch.object(runner.ResticRunner, "forget")
-    @patch.object(runner.ResticRunner, "prune")
-    @patch.object(runner.ResticRunner, "check")
-    @patch.object(runner.ResticRunner, "stats")
-    @patch.object(runner.ResticRunner, "unlock")
-    @patch("runrestic.restic.runner.write_metrics")
-    def test_run_invokes_default_actions(
-        self,
-        mock_write_metrics,
-        mock_unlock,
-        mock_stats,
-        mock_check,
-        mock_prune,
-        mock_forget,
-        mock_backup,
-        mock_init_method,
-    ):
-        """
-        Test that run() invokes all action methods in the correct conditions and logs metrics.
-        """
-        config = {
-            "name": "test",
-            "repositories": ["repo"],
-            "environment": {},
-            "metrics": {"prometheus": {}},
-            "execution": {},
-            "backup": {},
-            "prune": {},
-        }
-        args = Namespace(actions=[])
-        args.dry_run = False
-        restic_args: list[str] = []
-
-        runner_instance = runner.ResticRunner(config, args, restic_args)
-        runner_instance.metrics["errors"] = 0
-
-        errors = runner_instance.run()
-        mock_init_method.assert_not_called()
-        mock_backup.assert_called_once()
-        mock_forget.assert_called_once()
-        mock_prune.assert_called_once()
-        mock_check.assert_called_once()
-        mock_stats.assert_called_once()
-        mock_unlock.assert_not_called()
-        mock_write_metrics.assert_called_once_with(runner_instance.metrics, config)
-        self.assertEqual(errors, 0)
-
-    @patch.object(runner.ResticRunner, "init")
-    @patch.object(runner.ResticRunner, "backup")
-    @patch.object(runner.ResticRunner, "forget")
-    @patch.object(runner.ResticRunner, "prune")
-    @patch.object(runner.ResticRunner, "check")
-    @patch.object(runner.ResticRunner, "stats")
-    @patch.object(runner.ResticRunner, "unlock")
-    @patch("runrestic.restic.runner.write_metrics")
-    def test_run_invokes_default_actions_no_stats(
-        self,
-        mock_write_metrics,
-        mock_unlock,
-        mock_stats,
-        mock_check,
-        mock_prune,
-        mock_forget,
-        mock_backup,
-        mock_init_method,
-    ):
-        """
-        Test that run() invokes all action methods in the correct conditions and logs metrics.
-        """
-        config = {
-            "name": "test",
-            "repositories": ["repo"],
-            "environment": {},
-            "execution": {},
-            "backup": {},
-            "prune": {},
-        }
-        args = Namespace(actions=[])
-        args.dry_run = False
-        restic_args: list[str] = []
-
-        runner_instance = runner.ResticRunner(config, args, restic_args)
-        runner_instance.metrics["errors"] = 0
-
-        errors = runner_instance.run()
-        mock_init_method.assert_not_called()
-        mock_backup.assert_called_once()
-        mock_forget.assert_called_once()
-        mock_prune.assert_called_once()
-        mock_check.assert_called_once()
-        mock_stats.assert_not_called()
-        mock_unlock.assert_not_called()
-        mock_write_metrics.assert_not_called()
-        self.assertEqual(errors, 0)
+                # reset mocks for next scenario
+                for m in (
+                    mock_init,
+                    mock_backup,
+                    mock_forget,
+                    mock_prune,
+                    mock_check,
+                    mock_stats,
+                    mock_unlock,
+                    mock_write_metrics,
+                ):
+                    m.reset_mock()
 
     @patch("runrestic.restic.runner.MultiCommand")
     def test_init_runs_commands(self, mock_mc):
