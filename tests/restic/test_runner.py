@@ -232,7 +232,13 @@ class TestResticRunner(TestCase):
             "repositories": ["repo1", "repo2"],
             "environment": {},
             "execution": {},
-            "backup": {"sources": ["/data"]},
+            "backup": {
+                "sources": ["/data"],
+                "files_from": ["/data/files.txt"],
+                "exclude_patterns": ["*.exclude"],
+                "exclude_files": ["dummy_file"],
+                "exclude_if_present": ["*.present"],
+            },
             "metrics": {},
         }
         args = Namespace(dry_run=False)
@@ -244,10 +250,126 @@ class TestResticRunner(TestCase):
         mock_parse_backup.return_value = {"parsed": True}
 
         runner_instance.backup()
+
+        # validate MultiCommand instantiation
+        expected_commands = [
+            [
+                "restic",
+                "-r",
+                "repo1",
+                "backup",
+                "--opt",
+                "--files-from",
+                "/data/files.txt",
+                "--exclude",
+                "*.exclude",
+                "--exclude-file",
+                "dummy_file",
+                "--exclude-if-present",
+                "*.present",
+                "/data",
+            ],
+            [
+                "restic",
+                "-r",
+                "repo2",
+                "backup",
+                "--opt",
+                "--files-from",
+                "/data/files.txt",
+                "--exclude",
+                "*.exclude",
+                "--exclude-file",
+                "dummy_file",
+                "--exclude-if-present",
+                "*.present",
+                "/data",
+            ],
+        ]
+        expected_abort = [
+            "Fatal: unable to open config file",
+            "Fatal: wrong password",
+        ]
+        mock_mc.assert_called_once_with(expected_commands, config["execution"], expected_abort)
+        mock_mc.return_value.run.assert_called_once()
+
         metrics = runner_instance.metrics["backup"]
         self.assertEqual(metrics["repo1"], {"parsed": True})
         self.assertEqual(metrics["repo2"], {"rc": 1})
         self.assertEqual(runner_instance.metrics["errors"], 1)
+
+    @patch("runrestic.restic.runner.MultiCommand")
+    @patch("runrestic.restic.runner.parse_backup")
+    @patch("runrestic.restic.runner.redact_password", side_effect=lambda repo, repl: repo)
+    def test_backup_with_pre_and_post_hooks(self, mock_redact, mock_parse_backup, mock_mc):
+        """
+        Test backup() runs pre_hooks, the main backup, and post_hooks with correct arguments and metrics.
+        """
+        # Arrange
+        config: dict[str, Any] = {
+            "repositories": ["repo"],
+            "environment": {},
+            "execution": {"foo": "bar"},
+            "backup": {
+                "sources": ["data"],
+                "pre_hooks": [["echo", "pre1"], ["echo", "pre2"]],
+                "post_hooks": [["echo", "post1"], ["echo", "post2"]],
+            },
+            "metrics": {"prometheus": {"password_replacement": ""}},
+        }
+        args = Namespace(dry_run=False)
+        restic_args = ["--opt"]
+        runner_instance = runner.ResticRunner(config, args, restic_args)
+
+        # Simulate runs
+        pre_runs = [
+            {"output": [(0, "")], "time": 0.5},
+            {"output": [(0, "")], "time": 0.2},
+        ]
+        main_runs = [
+            {"output": [(0, "")], "time": 1.0},
+        ]
+        post_runs = [
+            {"output": [(0, "")], "time": 0.3},
+            {"output": [(1, "")], "time": 0.1},
+        ]
+        # run() called three times: pre, main, post
+        mock_mc.return_value.run.side_effect = [pre_runs, main_runs, post_runs]
+        mock_parse_backup.return_value = {"parsed": True}
+
+        # Act
+        runner_instance.backup()
+
+        # Assert MultiCommand instantiations
+        hooks_cfg = config["execution"].copy()
+        hooks_cfg.update({"parallel": False, "shell": True})
+
+        calls = mock_mc.call_args_list
+        # 1) pre_hooks
+        self.assertEqual(calls[0][0][0], config["backup"]["pre_hooks"])
+        self.assertEqual(calls[0][1], {"config": hooks_cfg})
+        # 2) main backup
+        expected_cmds = [["restic", "-r", "repo", "backup", *restic_args, *config["backup"]["sources"]]]
+        expected_abort = ["Fatal: unable to open config file", "Fatal: wrong password"]
+        self.assertEqual(calls[1][0][0], expected_cmds)
+        self.assertEqual(calls[1][0][1], config["execution"])
+        self.assertEqual(calls[1][0][2], expected_abort)
+        # 3) post_hooks
+        self.assertEqual(calls[2][0][0], config["backup"]["post_hooks"])
+        self.assertEqual(calls[2][1], {"config": hooks_cfg})
+
+        # Assert metrics
+        m = runner_instance.metrics["backup"]
+        # pre_hooks
+        self.assertAlmostEqual(m["_restic_pre_hooks"]["duration_seconds"], 0.7)
+        self.assertEqual(m["_restic_pre_hooks"]["rc"], 0)
+        # main backup
+        self.assertEqual(m["repo"], {"parsed": True})
+        # post_hooks
+        self.assertAlmostEqual(m["_restic_post_hooks"]["duration_seconds"], 0.4)
+        self.assertEqual(m["_restic_post_hooks"]["rc"], 1)
+        # errors only increment on main backup failures (none here)
+        self.assertEqual(runner_instance.metrics["errors"], 0)
 
     @patch("runrestic.restic.runner.MultiCommand")
     @patch("runrestic.restic.runner.logger.warning")
@@ -558,30 +680,156 @@ class TestResticRunner(TestCase):
         self.assertEqual(runner_instance.metrics["errors"], 1)
 
     @patch("runrestic.restic.runner.MultiCommand")
-    def test_check_metrics(self, mock_mc):
+    def test_check_metrics_with_and_without_options(self, mock_mc):
         """
-        Test check() parses errors from output correctly.
+        Test check() with and without check-options:
+         - Verifies the --check-unused and --read-data flags
+         - Asserts MultiCommand args and abort_reasons
+         - Validates per-repo metrics and global error count
+        """
+        scenarios: list[dict[str, Any]] = [
+            {
+                "name": "base_check",
+                "config": {
+                    "repositories": ["repo"],
+                    "environment": {},
+                    "execution": {},
+                },
+                "expected_commands": [["restic", "-r", "repo", "check"]],
+                "expected_stats": {
+                    "check_unused": 0,
+                    "read_data": 0,
+                },
+            },
+            {
+                "name": "check_unused",
+                "config": {
+                    "repositories": ["repo"],
+                    "environment": {},
+                    "execution": {},
+                    "check": {
+                        "checks": ["check-unused"],
+                    },
+                },
+                "expected_commands": [["restic", "-r", "repo", "check", "--check-unused"]],
+                "expected_stats": {
+                    "check_unused": 1,
+                    "read_data": 0,
+                },
+            },
+            {
+                "name": "check_read_data",
+                "config": {
+                    "repositories": ["repo"],
+                    "environment": {},
+                    "execution": {},
+                    "check": {
+                        "checks": ["read-data"],
+                    },
+                },
+                "expected_commands": [["restic", "-r", "repo", "check", "--read-data"]],
+                "expected_stats": {
+                    "check_unused": 0,
+                    "read_data": 1,
+                },
+            },
+        ]
+        # simulate a failure output
+        output_str = "error: load <snapshot/1234>\nPack ID does not match, corrupted"
+        process_info = {"output": [(1, output_str)], "time": 0.5}
+        mock_mc.return_value.run.return_value = [process_info]
+
+        for sc in scenarios:
+            with self.subTest(sc["name"]):
+                # build config
+
+                args = Namespace(dry_run=False)
+                restic_args: list[str] = []
+                runner_instance = runner.ResticRunner(sc["config"], args, restic_args)
+
+                # clear any prior error count
+                runner_instance.metrics["errors"] = 0
+
+                # run
+                runner_instance.check()
+
+                # validate MultiCommand instantiation
+                expected_commands = sc["expected_commands"]
+                expected_abort = [
+                    "Fatal: unable to open config file",
+                    "Fatal: wrong password",
+                ]
+                mock_mc.assert_called_once_with(
+                    expected_commands, config=sc["config"]["execution"], abort_reasons=expected_abort
+                )
+                mock_mc.return_value.run.assert_called_once()
+
+                # self.assertEqual(config, base_config)
+                # combined per-repo metrics assertion
+                expected_stats = {
+                    "errors": 1,
+                    "errors_snapshots": 1,
+                    "errors_data": 1,
+                    "check_unused": sc["expected_stats"]["check_unused"],
+                    "read_data": sc["expected_stats"]["read_data"],
+                    "duration_seconds": 0.5,
+                    "rc": 1,
+                }
+                self.assertEqual(runner_instance.metrics["check"]["repo"], expected_stats)
+
+                # global errors counter
+                self.assertEqual(runner_instance.metrics["errors"], 1)
+
+                # reset between subtests
+                mock_mc.reset_mock()
+
+    @patch("runrestic.restic.runner.MultiCommand")
+    def test_check_metrics_with_errors(self, mock_mc):
+        """
+        Test check() with and different error scenarios
         """
         config = {
             "repositories": ["repo"],
             "environment": {},
             "execution": {},
-            "check": {"checks": ["check-unused", "read-data"]},
         }
-        args = Namespace(dry_run=False)
-        restic_args: list[str] = []
-        runner_instance = runner.ResticRunner(config, args, restic_args)
-        output_str = "error: load <snapshot/1234>\nPack ID does not match, corrupted"
-        process_info = {"output": [(1, output_str)], "time": 0.5}
-        mock_mc.return_value.run.return_value = [process_info]
+        scenarios: list[dict[str, Any]] = [
+            {
+                "name": "return_code",
+                "process_info": {"output": [(1, "error occurred")], "time": 0.1},
+                "global_errors": 1,
+                "check_errors": 0,
+            },
+            {
+                "name": "load_error",
+                "process_info": {"output": [(0, "Test: error: load <snapshot/123>")], "time": 0.1},
+                "global_errors": 0,
+                "check_errors": 1,
+            },
+            {
+                "name": "pack_id_mismatch",
+                "process_info": {"output": [(0, "Test: Pack ID does not match, WRONG")], "time": 0.1},
+                "global_errors": 0,
+                "check_errors": 1,
+            },
+        ]
 
-        runner_instance.check()
-        stats = runner_instance.metrics["check"]["repo"]
-        self.assertEqual(stats["errors"], 1)
-        self.assertEqual(stats["errors_snapshots"], 1)
-        self.assertEqual(stats["errors_data"], 1)
-        self.assertEqual(stats["read_data"], 1)
-        self.assertEqual(stats["check_unused"], 1)
-        self.assertEqual(stats["duration_seconds"], 0.5)
-        self.assertEqual(stats["rc"], 1)
-        self.assertEqual(runner_instance.metrics["errors"], 1)
+        for sc in scenarios:
+            with self.subTest(sc["name"]):
+                # build config
+                args = Namespace(dry_run=False)
+                restic_args: list[str] = []
+                runner_instance = runner.ResticRunner(config, args, restic_args)
+                # clear any prior error count
+                runner_instance.metrics["errors"] = 0
+                # simulate failure
+                mock_mc.return_value.run.return_value = [sc["process_info"]]
+                # run
+                runner_instance.check()
+                mock_mc.return_value.run.assert_called_once()
+                # global errors counter
+                self.assertEqual(runner_instance.metrics["errors"], sc["global_errors"])
+                # check errors counter
+                self.assertEqual(runner_instance.metrics["check"]["repo"]["errors"], sc["check_errors"])
+                # reset between subtests
+                mock_mc.reset_mock()
