@@ -100,30 +100,29 @@ class TestRunresticRunrestic(TestCase):
         self.assertIsNone(runrestic.runrestic())  # type: ignore[func-returns-value]
         mock_check.assert_called_once()
 
-    # # @patch("runrestic.runrestic.main.remainder")
-    # @patch("runrestic.runrestic.runrestic.configure_signals")
-    # @patch("runrestic.runrestic.runrestic.configure_logging")
-    # @patch("runrestic.restic.installer.restic_check", return_value=True)
-    # @patch("runrestic.runrestic.configuration.cli_arguments")
-    # def test_config_file_flag(self, mock_cli, mock_check, mock_log, mock_sig):
-    #     args = MagicMock()
-    #     args.log_level = "info"
-    #     args.config_file = "/tmp/config"
-    #     args.actions = []
-    #     args.show_progress = None
-    #     extras: list[str] = []
-    #     mock_cli.return_value = (args, extras)
+    @patch("runrestic.runrestic.runrestic.parse_configuration", side_effect=KeyError("Error"))
+    @patch("runrestic.runrestic.runrestic.configure_logging")
+    @patch("runrestic.runrestic.runrestic.restic_check", return_value=True)
+    @patch("runrestic.runrestic.runrestic.cli_arguments")
+    def test_config_file_flag(self, mock_cli, mock_check, mock_log, mock_parse):
+        args = MagicMock()
+        args.log_level = "info"
+        args.config_file = "/tmp/config"  # noqa: S108
+        args.actions = []
+        args.show_progress = None
+        extras: list[str] = []
+        mock_cli.return_value = (args, extras)
 
-    #     with patch("runrestic.runrestic.configuration.parse_configuration", return_value={"cfg": 1}):
-    #         runrestic.runrestic()
+        # with patch("runrestic.runrestic.runrestic.parse_configuration", return_value={"cfg": 1}):
+        with self.assertRaises(KeyError):
+            runrestic.runrestic()
+        mock_parse.assert_called_once_with("/tmp/config")  # noqa: S108
+        mock_log.assert_called_with("info")
 
-    #     mock_log.assert_called_with("info")
-    #     mock_sig.assert_called_once()
-
-    @patch("runrestic.restic.installer.restic_check", return_value=True)
-    @patch("runrestic.runrestic.configuration.cli_arguments")
-    @patch("runrestic.runrestic.configuration.configuration_file_paths", return_value=[])
-    @patch("runrestic.runrestic.configuration.possible_config_paths", return_value=["/etc/restic", "~/.restic"])
+    @patch("runrestic.runrestic.runrestic.restic_check", return_value=True)
+    @patch("runrestic.runrestic.runrestic.cli_arguments")
+    @patch("runrestic.runrestic.runrestic.configuration_file_paths", return_value=[])
+    @patch("runrestic.runrestic.runrestic.possible_config_paths", return_value=["/etc/restic", "~/.restic"])
     def test_no_config_paths_raises(self, mock_possible, mock_confpaths, mock_cli, mock_check):
         args = MagicMock(log_level="debug", config_file=None, actions=[], show_progress=None)
         extras: list[str] = []
@@ -144,24 +143,24 @@ class TestRunresticRunrestic(TestCase):
         self.assertIn("RESTIC_PROGRESS_FPS", os.environ)
         self.assertEqual(os.environ["RESTIC_PROGRESS_FPS"], str(1 / float("0.5")))
 
-    # @patch("runrestic.restic.installer.restic_check", return_value=True)
-    # @patch("runrestic.runrestic.runrestic.cli_arguments")
-    # @patch("runrestic.runrestic.runrestic.configuration_file_paths", return_value=["cfg1"])
-    # @patch(
-    #     "runrestic.runrestic.runrestic.parse_configuration",
-    #     return_value={"repositories": ["dummy"], "name": "dummy", "environment": {}},
-    # )
-    # @patch("runrestic.restic.shell.restic_shell")
-    # def test_shell_action_invokes_shell(self, mock_shell, mock_parse, mock_confpaths, mock_cli, mock_check):
-    #     with patch("runrestic.runrestic.runrestic.logging.getLogger") as _mock_get_logger:
-    #         _mock_logger = MagicMock()
-    #         args = MagicMock(log_level="info", config_file=None, actions=["shell"], show_progress=None)
-    #         extras: list[str] = []
-    #         mock_cli.return_value = (args, extras)
+    @patch("runrestic.runrestic.runrestic.restic_check", return_value=True)
+    @patch("runrestic.runrestic.runrestic.cli_arguments")
+    @patch("runrestic.runrestic.runrestic.configuration_file_paths", return_value=["cfg1"])
+    @patch(
+        "runrestic.runrestic.runrestic.parse_configuration",
+        return_value={"repositories": ["dummy"], "name": "dummy", "environment": {}},
+    )
+    @patch("runrestic.runrestic.runrestic.restic_shell")
+    def test_shell_action_invokes_shell(self, mock_shell, mock_parse, mock_confpaths, mock_cli, mock_check):
+        with patch("runrestic.runrestic.runrestic.logging.getLogger") as _mock_get_logger:
+            _mock_logger = MagicMock()
+            args = MagicMock(log_level="info", config_file=None, actions=["shell"], show_progress=None)
+            extras: list[str] = []
+            mock_cli.return_value = (args, extras)
 
-    #         result = runrestic.runrestic()  # type: ignore[func-returns-value]
-    #         mock_shell.assert_called_once_with([{"a": 1}])
-    #         self.assertIsNone(result)
+            result = runrestic.runrestic()  # type: ignore[func-returns-value]
+            mock_shell.assert_called_once_with([{"repositories": ["dummy"], "name": "dummy", "environment": {}}])
+            self.assertIsNone(result)
 
     @patch("runrestic.runrestic.runrestic.restic_check", return_value=True)
     @patch("runrestic.runrestic.runrestic.cli_arguments")
