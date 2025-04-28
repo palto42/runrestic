@@ -42,10 +42,6 @@ def download_restic() -> None:
     The function fetches the latest release information from the Restic GitHub repository,
     downloads the compressed binary, decompresses it, and installs it to `/usr/local/bin/restic`.
     If permissions are insufficient, the user is prompted to provide an alternative path.
-
-    Raises:
-        PermissionError: If the program cannot write to the default installation path
-        and no alternative path is provided.
     """
     try:
         response = requests.get("https://api.github.com/repos/restic/restic/releases/latest", timeout=10)
