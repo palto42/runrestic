@@ -164,14 +164,44 @@ def parse_configuration(config_filename: str) -> dict[str, Any]:
 
     Returns:
         dict[str, Any]: The parsed and validated configuration as a dictionary.
+
+    Raises:
+        FileNotFoundError: If the configuration file does not exist.
+        PermissionError: If the configuration file cannot be accessed.
+        ValueError: If the configuration file cannot be parsed.
+        jsonschema.ValidationError: If the configuration does not match the schema.
     """
     logger.debug("Parsing configuration file: %s", config_filename)
-    with open(config_filename, encoding="utf-8") as file:
-        config: dict[str, Any] = toml.load(file) if str(config_filename).endswith(".toml") else json.load(file)
+    try:
+        with open(config_filename, encoding="utf-8") as file:
+            if str(config_filename).endswith(".toml"):
+                try:
+                    config: dict[str, Any] = toml.load(file)
+                except toml.TomlDecodeError as e:
+                    logger.error("Failed to parse TOML file: %s", e)
+                    raise ValueError(f"Failed to parse TOML file: {e}") from e  # noqa: TRY003
+            else:
+                try:
+                    config = json.load(file)
+                except json.JSONDecodeError as e:
+                    logger.error("Failed to parse JSON file: %s", e)
+                    raise ValueError(f"Failed to parse JSON file: {e}") from e  # noqa: TRY003
+    except FileNotFoundError:
+        logger.error("Configuration file not found: %s", config_filename)
+        raise
+    except PermissionError:
+        logger.error("Permission denied when accessing configuration file: %s", config_filename)
+        raise
+
     config = deep_update(CONFIG_DEFAULTS, dict(config))
 
     if "name" not in config:
         config["name"] = os.path.basename(config_filename)
 
-    jsonschema.validate(instance=config, schema=SCHEMA)
+    try:
+        jsonschema.validate(instance=config, schema=SCHEMA)
+    except jsonschema.ValidationError as e:
+        logger.error("Configuration validation failed: %s", e)
+        raise
+
     return config

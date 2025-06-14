@@ -110,7 +110,7 @@ def deep_update(base: dict[Any, Any], update: dict[Any, Any]) -> dict[Any, Any]:
     return new
 
 
-ParsedType = TypeVar("ParsedType", str, tuple)
+ParsedType = TypeVar("ParsedType", str, tuple[str, ...])
 
 
 def parse_line(

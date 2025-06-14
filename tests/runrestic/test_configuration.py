@@ -3,7 +3,7 @@ from argparse import Namespace
 from unittest.mock import patch
 
 import pytest
-from toml import TomlDecodeError
+from jsonschema import ValidationError
 
 from runrestic.runrestic.configuration import (
     cli_arguments,
@@ -96,9 +96,27 @@ def restic_minimal_good_conf(restic_dir, request):
 
 
 @pytest.fixture
-def restic_minimal_broken_conf(restic_dir):
+def restic_minimal_broken_conf_toml(restic_dir):
     p = restic_dir.join("example.toml")
     content = '[environment\nRESTIC_PASSWORD = {CHANGEME"'
+    p.write(content)
+    os.chmod(p, 0o0600)
+    return p
+
+
+@pytest.fixture
+def restic_minimal_broken_conf_json(restic_dir):
+    p = restic_dir.join("example.json")
+    content = '{"environment": { RESTIC_PASSWORD: "CHANGEME"}'
+    p.write(content)
+    os.chmod(p, 0o0600)
+    return p
+
+
+@pytest.fixture
+def restic_wrong_schema(restic_dir):
+    p = restic_dir.join("example.toml")
+    content = '[key_error]\nRESTIC_PASSWORD = "CHANGEME"'
     p.write(content)
     os.chmod(p, 0o0600)
     return p
@@ -180,9 +198,42 @@ def test_parse_configuration_good_conf(restic_minimal_good_conf, expected_name):
     }
 
 
-def test_parse_configuration_broken_conf(caplog, restic_minimal_broken_conf):
-    with pytest.raises(TomlDecodeError):
-        parse_configuration(restic_minimal_broken_conf)
+def test_parse_configuration_broken_conf(caplog, restic_minimal_broken_conf_toml):
+    with pytest.raises(ValueError, match="Failed to parse TOML file:.*"):
+        parse_configuration(restic_minimal_broken_conf_toml)
+
+
+def test_parse_configuration_broken_conf_json(caplog, restic_minimal_broken_conf_json):
+    with pytest.raises(ValueError, match="Failed to parse JSON file:.*"):
+        parse_configuration(restic_minimal_broken_conf_json)
+
+
+def test_parse_configuration_file_not_found(caplog):
+    not_file = "file_not_found.toml"
+    with (
+        pytest.raises(FileNotFoundError, match=f".*{not_file}.*"),
+        patch("runrestic.restic.runner.logger.error") as mock_error,
+    ):
+        parse_configuration(not_file)
+        assert mock_error.assert_called_once_with("Configuration file not found: %s", not_file)
+
+
+def test_parse_configuration_file_permission(caplog):
+    config_file = "dummy.file"
+    with (
+        pytest.raises(PermissionError),
+        patch("builtins.open", side_effect=PermissionError),
+        patch("runrestic.restic.runner.logger.error") as mock_error,
+    ):
+        parse_configuration(config_file)
+        assert mock_error.assert_called_once_with(
+            "Permission denied when accessing configuration file: %s", config_file
+        )
+
+
+def test_parse_configuration_schema_error(caplog, restic_wrong_schema):
+    with pytest.raises(ValidationError, match="'repositories' is a required property.*"):
+        parse_configuration(restic_wrong_schema)
 
 
 def test_cli_arguments_with_extra_args():
@@ -199,6 +250,6 @@ def test_cli_arguments_with_extra_args():
 
 
 #
-# def test_parse_configuration_broken_conf(restic_minimal_broken_conf):
+# def test_parse_configuration_broken_conf(restic_minimal_broken_conf_toml):
 #     with pytest.raises(jsonschema.exceptions.ValidationError):
-#         parse_configuration(restic_minimal_broken_conf)
+#         parse_configuration(restic_minimal_broken_conf_toml)
