@@ -192,9 +192,9 @@ class TestRunresticRunrestic(TestCase):
             mock_cli.return_value = (args, extras)
 
             result = runrestic.runrestic()  # type: ignore[func-returns-value]
-            mock_shell.assert_called_once_with(
-                [{"repositories": ["dummy"], "name": "dummy", "environment": {}}]
-            )
+            mock_shell.assert_called_once_with([
+                {"repositories": ["dummy"], "name": "dummy", "environment": {}}
+            ])
             self.assertIsNone(result)
 
     @patch("runrestic.runrestic.runrestic.restic_check", return_value=True)

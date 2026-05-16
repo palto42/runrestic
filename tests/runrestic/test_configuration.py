@@ -245,9 +245,13 @@ def test_parse_configuration_schema_error(caplog, restic_wrong_schema):
 
 
 def test_cli_arguments_with_extra_args():
-    assert cli_arguments(
-        ["backup", "--one-file-system", "pos_arg", "--", "--more"]
-    ) == (
+    assert cli_arguments([
+        "backup",
+        "--one-file-system",
+        "pos_arg",
+        "--",
+        "--more",
+    ]) == (
         Namespace(
             actions=["backup"],
             config_file=None,

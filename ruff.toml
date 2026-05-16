@@ -1,4 +1,7 @@
 target-version = "py310"
+line-length = 88
+fix = true
+
 exclude = [
     ".venv",
     ".eggs",
@@ -7,22 +10,35 @@ exclude = [
 
 [lint]
 select = [
-    "B",
+    "A",  # flake8-builtins
+    "B",  # flake8-bugbear
     "C",
-    "E",
-    "W",
-    "F",
-    "FLY",
+    # "C4",  # flake8-comprehensions
+    # "C90",  # mccabe
     "DJ",
-    "I",
+    "E", "W",  # pycodestyle
+    "F",  # pyflakes
+    "FLY",
+    "I",  # isort
     "N",
-    "S",
+    "PGH",  # pygrep-hooks
     "PLC",
-    "RUF",
-    "UP",
+    "RUF",  # ruff
+    "S",  # flake8-bandit
+    "SIM",  # flake8-simplify
+    "T10",  # flake8-debugger
+    "TRY",  # tryceratops
+    "UP",  # pyupgrade
+    "YTT",  # flake8-2020
 ]
+
 ignore = [
-    "E501", # line too long 🤷
+    "E501",  # line too long 🤷
+    "E731",  # DoNotAssignLambda
+    "UP035",  # Deprecated import
+    "UP006",
+    "TRY003",  #Avoid specifying long messages outside the exception class
+    "TRY400",  # Logging exception
 ]
 
 [lint.isort]
@@ -40,3 +56,6 @@ section-order = [
 "tests/**/test_*.py" = [
     "S101", # allow `asserts` in tests
 ]
+
+[format]
+preview = true

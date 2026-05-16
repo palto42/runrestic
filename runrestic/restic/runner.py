@@ -59,7 +59,8 @@ class ResticRunner:
         self.metrics: dict[str, Any] = {"errors": 0}
         self.log_metrics: Any = config.get("metrics") and not args.dry_run
         self.pw_replacement: str = (
-            config.get("metrics", {})
+            config
+            .get("metrics", {})
             .get("prometheus", {})
             .get("password_replacement", "")
         )
