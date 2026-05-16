@@ -82,7 +82,9 @@ def cli_arguments(args: list[str] | None = None) -> tuple[Namespace, list[str]]:
         metavar="INTERVAL",
         help="Updated interval in seconds for restic progress (default: None)",
     )
-    parser.add_argument("-v", "--version", action="version", version="%(prog)s " + __version__)
+    parser.add_argument(
+        "-v", "--version", action="version", version="%(prog)s " + __version__
+    )
 
     options, extras = parser.parse_known_args(args)
     if extras:
@@ -107,7 +109,9 @@ def possible_config_paths() -> list[str]:
     Returns:
         list[str]: A list of paths where configuration files might be located.
     """
-    user_config_directory = os.getenv("XDG_CONFIG_HOME") or os.path.expandvars(os.path.join("$HOME", ".config"))
+    user_config_directory = os.getenv("XDG_CONFIG_HOME") or os.path.expandvars(
+        os.path.join("$HOME", ".config")
+    )
     return [
         "/etc/runrestic.toml",
         "/etc/runrestic.json",
@@ -137,7 +141,9 @@ def configuration_file_paths() -> list[str]:
 
         for filename in os.listdir(path):
             filename = os.path.join(path, filename)
-            if (filename.endswith(".toml") or filename.endswith(".json")) and os.path.isfile(filename):
+            if (
+                filename.endswith(".toml") or filename.endswith(".json")
+            ) and os.path.isfile(filename):
                 octal_permissions = oct(os.stat(filename).st_mode)
                 if octal_permissions[-2:] != "00":  # file permissions are too broad
                     logger.warning(
@@ -179,18 +185,20 @@ def parse_configuration(config_filename: str) -> dict[str, Any]:
                     config: dict[str, Any] = toml.load(file)
                 except toml.TomlDecodeError as e:
                     logger.error("Failed to parse TOML file: %s", e)
-                    raise ValueError(f"Failed to parse TOML file: {e}") from e  # noqa: TRY003
+                    raise ValueError(f"Failed to parse TOML file: {e}") from e
             else:
                 try:
                     config = json.load(file)
                 except json.JSONDecodeError as e:
                     logger.error("Failed to parse JSON file: %s", e)
-                    raise ValueError(f"Failed to parse JSON file: {e}") from e  # noqa: TRY003
+                    raise ValueError(f"Failed to parse JSON file: {e}") from e
     except FileNotFoundError:
         logger.error("Configuration file not found: %s", config_filename)
         raise
     except PermissionError:
-        logger.error("Permission denied when accessing configuration file: %s", config_filename)
+        logger.error(
+            "Permission denied when accessing configuration file: %s", config_filename
+        )
         raise
 
     config = deep_update(CONFIG_DEFAULTS, dict(config))

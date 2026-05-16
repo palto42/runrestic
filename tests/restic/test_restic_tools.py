@@ -3,7 +3,7 @@ import logging
 import os
 import time
 from time import sleep
-from typing import Any, Dict, List, Optional, Union
+from typing import Any
 from unittest.mock import MagicMock, call, patch
 
 import pytest
@@ -17,10 +17,10 @@ from runrestic.restic.tools import (
 
 
 def fake_retry_process(
-    cmd: Union[str, List[str]],
-    config: Dict[str, Any],
-    abort_reasons: Optional[List[str]] = None,
-) -> Dict[str, Any]:
+    cmd: str | list[str],
+    config: dict[str, Any],
+    abort_reasons: list[str] | None = None,
+) -> dict[str, Any]:
     """Fake retry_process function to simulate command execution."""
     # Simulate different outputs per command
     if isinstance(cmd, list):
@@ -34,7 +34,8 @@ def fake_retry_process(
     return {
         "current_try": count,
         "tries_total": 3,
-        "output": [(1, f"fail{i}") for i in range(1, count)] + ([(0, "pass")] if retry_count + 1 >= count else []),
+        "output": [(1, f"fail{i}") for i in range(1, count)]
+        + ([(0, "pass")] if retry_count + 1 >= count else []),
         "time": count / 10,
     }
 
@@ -202,7 +203,7 @@ def test_run_multiple_commands_parallel() -> None:
     assert 0.5 > time.time() - start_time > 0.3
     expected_return = [[1, 1, 0], [1, 0], [0]]
 
-    for exp, cmd_ret in zip(expected_return, aa):
+    for exp, cmd_ret in zip(expected_return, aa, strict=False):
         assert [x[0] for x in cmd_ret["output"]] == exp
 
 
@@ -215,7 +216,7 @@ def test_run_multiple_commands_serial() -> None:
     assert 1.1 > float(time.time() - start_time) > 0.5
     expected_return = [[1, 1, 0], [1, 1, 0], [1, 1, 1]]
 
-    for exp, cmd_ret in zip(expected_return, aa):
+    for exp, cmd_ret in zip(expected_return, aa, strict=False):
         assert [x[0] for x in cmd_ret["output"]] == exp
 
 
@@ -265,4 +266,6 @@ def test_redact_password():
     ]
     pw_replacement = "******"
     for repo_str in repo_strings:
-        assert redact_password(repo_str.format(password), pw_replacement) == repo_str.format(pw_replacement)
+        assert redact_password(
+            repo_str.format(password), pw_replacement
+        ) == repo_str.format(pw_replacement)

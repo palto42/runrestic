@@ -1,11 +1,11 @@
 [project]
 name = "runrestic"
-version = "0.5.31"
-description = "A wrapper script for Restic backup software that inits, creates, prunes and checks backups."
-authors = [{ name = "Andreas Nüßlein", email = "andreas@nuessle.in" }]
-readme = "README.md"
-keywords = ['python']
-requires-python = ">=3.10,<4.0"
+version = "0.5.32"
+description = "A wrapper script for Restic backup software that inits, creates, prunes and checks backups"
+license = "GPL-3.0+"
+authors = [ { name="Andreas Nüßlein", email="andreas@nuessle.in" } ]
+readme = 'README.md'
+keywords = ["backup"]
 classifiers = [
     "Intended Audience :: Developers",
     "Programming Language :: Python",
@@ -21,6 +21,7 @@ dependencies = [
     "requests>=2.32.3",
     "toml>=0.10.2",
 ]
+requires-python = ">=3.10"
 
 [project.urls]
 Homepage = "https://sinnwerkstatt.github.io/runrestic/"
@@ -52,8 +53,8 @@ runrestic = "runrestic.runrestic.runrestic:runrestic"
 requires = ["hatchling"]
 build-backend = "hatchling.build"
 
-[tool.setuptools]
-py-modules = ["runrestic"]
+[tool.hatch.build.targets.wheel]
+packages = ["runrestic"]
 
 [tool.mypy]
 files = ["runrestic"]
@@ -76,8 +77,8 @@ filterwarnings = [
 ]
 
 [tool.ruff]
-target-version = "py39"
-line-length = 120
+target-version = "py310"
+line-length = 88
 fix = true
 
 [tool.ruff.lint]
@@ -140,3 +141,6 @@ exclude_lines = [
 [tool.coverage.run]
 branch = true
 source = ["runrestic"]
+
+[tool.uv]
+package = true

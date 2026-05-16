@@ -156,14 +156,18 @@ def test_configuration_file_paths_not_exists(tmpdir):
 def test_configuration_file_paths_is_file(tmpdir):
     tmpdir.join("config.yaml").write("irrelevant")
     conf_paths = [str(tmpdir.join("config.yaml"))]
-    with patch("runrestic.runrestic.configuration.possible_config_paths") as mock_possible_paths:
+    with patch(
+        "runrestic.runrestic.configuration.possible_config_paths"
+    ) as mock_possible_paths:
         mock_possible_paths.return_value = conf_paths
         assert configuration_file_paths() == conf_paths
 
 
 def test_configuration_file_paths_exclude_dirs(tmpdir):
     tmpdir.join("config.yaml").mkdir()
-    with patch("runrestic.runrestic.configuration.possible_config_paths") as mock_possible_paths:
+    with patch(
+        "runrestic.runrestic.configuration.possible_config_paths"
+    ) as mock_possible_paths:
         mock_possible_paths.return_value = str(tmpdir)
         assert configuration_file_paths() == []
 
@@ -215,7 +219,9 @@ def test_parse_configuration_file_not_found(caplog):
         patch("runrestic.restic.runner.logger.error") as mock_error,
     ):
         parse_configuration(not_file)
-        assert mock_error.assert_called_once_with("Configuration file not found: %s", not_file)
+        assert mock_error.assert_called_once_with(
+            "Configuration file not found: %s", not_file
+        )
 
 
 def test_parse_configuration_file_permission(caplog):
@@ -232,12 +238,16 @@ def test_parse_configuration_file_permission(caplog):
 
 
 def test_parse_configuration_schema_error(caplog, restic_wrong_schema):
-    with pytest.raises(ValidationError, match="'repositories' is a required property.*"):
+    with pytest.raises(
+        ValidationError, match="'repositories' is a required property.*"
+    ):
         parse_configuration(restic_wrong_schema)
 
 
 def test_cli_arguments_with_extra_args():
-    assert cli_arguments(["backup", "--one-file-system", "pos_arg", "--", "--more"]) == (
+    assert cli_arguments(
+        ["backup", "--one-file-system", "pos_arg", "--", "--more"]
+    ) == (
         Namespace(
             actions=["backup"],
             config_file=None,

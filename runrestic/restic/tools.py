@@ -11,10 +11,10 @@ import logging
 import os
 import re
 import time
-from concurrent.futures import Future
-from concurrent.futures.process import ProcessPoolExecutor
+from collections.abc import Sequence
+from concurrent.futures import Future, ThreadPoolExecutor
 from subprocess import PIPE, STDOUT, Popen
-from typing import IO, Any, Sequence
+from typing import IO, Any
 
 from runrestic.runrestic.tools import parse_time
 
@@ -49,7 +49,6 @@ class MultiCommand:
         self.commands = commands
         self.config = config
         self.abort_reasons = abort_reasons
-        self.process_pool_executor = ProcessPoolExecutor(max_workers=len(commands) if config["parallel"] else 1)
 
     def run(self) -> list[dict[str, Any]]:
         """
@@ -58,13 +57,22 @@ class MultiCommand:
         Returns:
             list[dict[str, Any]]: List of results for each command.
         """
-        for command in self.commands:
-            logger.debug("Spawning %s", command)
-            process = self.process_pool_executor.submit(retry_process, command, self.config, self.abort_reasons)
-            self.processes.append(process)
+        max_workers = len(self.commands) if self.config["parallel"] else 1
+        processes: list[Future[dict[str, Any]]] = []
+        with ThreadPoolExecutor(max_workers=max_workers) as executor:
+            for command in self.commands:
+                logger.debug("Spawning %s", command)
+                fut = executor.submit(
+                    retry_process, command, self.config, self.abort_reasons
+                )
+                logger.debug("Done command: %s", command)
+                processes.append(fut)
 
-        # result() is blocking. The function will return when all processes are done
-        return [process.result() for process in self.processes]
+            # collect results; exceptions propagate
+            results = [p.result() for p in processes]
+
+        # executor automatically shutdowns here
+        return results
 
 
 def log_messages(message: IO[str] | None, proc_cmd: str) -> str:
@@ -72,7 +80,7 @@ def log_messages(message: IO[str] | None, proc_cmd: str) -> str:
     Capture the process output and generate appropriate log messages.
 
     Args:
-        message (str | None): Process output message.
+        message (IO[str] | None): Process output message.
         proc_cmd (str): Name of the executed command (as it should appear in the logs).
 
     Returns:
@@ -90,7 +98,9 @@ def log_messages(message: IO[str] | None, proc_cmd: str) -> str:
                 proc_log_level = logging.ERROR
             elif re.match(r"^warning", log_out, re.I):
                 proc_log_level = logging.WARNING
-            elif re.match(r"^unchanged\s+/", log_out, re.I):  # unchanged files in restic output
+            elif re.match(
+                r"^unchanged\s+/", log_out, re.I
+            ):  # unchanged files in restic output
                 proc_log_level = logging.DEBUG
             else:
                 proc_log_level = logging.INFO
@@ -119,22 +129,34 @@ def retry_process(
     shell = config.get("shell", False)
     tries_total = config.get("retry_count", 0) + 1
     status = {"current_try": 0, "tries_total": tries_total, "output": []}
-    proc_cmd = cmd[0] if isinstance(cmd, list) else os.path.basename(cmd.split(" ", maxsplit=1)[0])
+    proc_cmd = (
+        cmd[0]
+        if isinstance(cmd, list)
+        else os.path.basename(cmd.split(" ", maxsplit=1)[0])
+    )
     for i in range(tries_total):
         status["current_try"] = i + 1
 
-        with Popen(cmd, stdout=PIPE, stderr=STDOUT, shell=shell, encoding="UTF-8") as process:  # noqa: S603
+        with Popen(  # noqa: S603
+            cmd, stdout=PIPE, stderr=STDOUT, shell=shell, encoding="UTF-8"
+        ) as process:
             output = log_messages(process.stdout, proc_cmd)
         returncode = process.returncode
         status["output"].append((returncode, output))
         if returncode == 0:
             break
 
-        if abort_reasons and any(abort_reason in output for abort_reason in abort_reasons):
+        if abort_reasons and any(
+            abort_reason in output for abort_reason in abort_reasons
+        ):
             logger.error(
                 "Aborting '%s' because of %s",
                 proc_cmd,
-                [abort_reason for abort_reason in abort_reasons if abort_reason in output],
+                [
+                    abort_reason
+                    for abort_reason in abort_reasons
+                    if abort_reason in output
+                ],
             )
             break
         if config.get("retry_backoff"):
@@ -201,4 +223,8 @@ def redact_password(repo_str: str, pw_replacement: str) -> str:
         str: Repository string with sensitive information redacted.
     """
     re_repo = re.compile(r"(^(?:[s]?ftp:|rest:http[s]?:|s3:http[s]?:).*?):(\S+)(@.*$)")
-    return re_repo.sub(rf"\1:{pw_replacement}\3", repo_str) if pw_replacement else re_repo.sub(r"\1\3", repo_str)
+    return (
+        re_repo.sub(rf"\1:{pw_replacement}\3", repo_str)
+        if pw_replacement
+        else re_repo.sub(r"\1\3", repo_str)
+    )

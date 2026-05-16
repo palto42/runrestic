@@ -7,7 +7,8 @@ based on the parsed Restic output. The metrics include information about backup,
 forget, prune, check, and stats operations.
 """
 
-from typing import Any, Iterator
+from collections.abc import Iterator
+from typing import Any
 
 # Prometheus metric templates for general metrics
 _restic_help_general = """
@@ -302,7 +303,9 @@ def prune_metrics(metrics: dict[str, Any], name: str) -> str:
     retval = _restic_help_prune
     for repo, mtrx in metrics.items():
         if mtrx["rc"] != 0:
-            retval += f'restic_prune_rc{{config="{name}",repository="{repo}"}} {mtrx["rc"]}\n'
+            retval += (
+                f'restic_prune_rc{{config="{name}",repository="{repo}"}} {mtrx["rc"]}\n'
+            )
         else:
             try:
                 retval += _restic_prune.format(name=name, repository=repo, **mtrx)
@@ -325,7 +328,9 @@ def check_metrics(metrics: dict[str, Any], name: str) -> str:
     retval = _restic_help_check
     for repo, mtrx in metrics.items():
         if mtrx["rc"] != 0:
-            retval += f'restic_check_rc{{config="{name}",repository="{repo}"}} {mtrx["rc"]}\n'
+            retval += (
+                f'restic_check_rc{{config="{name}",repository="{repo}"}} {mtrx["rc"]}\n'
+            )
         else:
             retval += _restic_check.format(name=name, repository=repo, **mtrx)
     return retval
@@ -345,7 +350,9 @@ def stats_metrics(metrics: dict[str, Any], name: str) -> str:
     retval = _restic_help_stats
     for repo, mtrx in metrics.items():
         if mtrx["rc"] != 0:
-            retval += f'restic_stats_rc{{config="{name}",repository="{repo}"}} {mtrx["rc"]}\n'
+            retval += (
+                f'restic_stats_rc{{config="{name}",repository="{repo}"}} {mtrx["rc"]}\n'
+            )
         else:
             retval += _restic_stats.format(name=name, repository=repo, **mtrx)
     return retval
